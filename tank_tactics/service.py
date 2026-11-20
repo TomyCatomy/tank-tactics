@@ -1,6 +1,10 @@
 """Game service: owns the in-memory game states, serialises every change per game
 behind a mutex, persists changes, and builds per-viewer payloads.
 
+Only live games (lobby/active) are held in memory for good. Finished and closed
+games are dropped once they end and read back from the database on demand, with a
+small LRU cache, so memory does not grow with the number of games ever played.
+
 Transport-agnostic: the HTTP/WebSocket server (server.py) and the tests both use it.
 """
 from __future__ import annotations
@@ -10,7 +14,7 @@ import random
 import secrets
 import threading
 import time
-from collections import defaultdict
+from collections import OrderedDict, defaultdict
 from typing import Any, Callable
 
 from . import game
@@ -46,6 +50,9 @@ class RateLimiter:
             return True
 
 
+LIVE_STATUSES = ("lobby", "active")
+
+
 def _new_id(n: int = 6) -> str:
     alphabet = "abcdefghjkmnpqrstuvwxyz23456789"  # no lookalikes, easy to type
     return "".join(secrets.choice(alphabet) for _ in range(n))
@@ -64,9 +71,12 @@ class GameService:
         self.cfg = server_config or ServerConfig()
         self.clock = clock
         self.rng = rng or random.Random()
-        self.games: dict[str, game.GameState] = {s.id: s for s in store.load_all()}
+        # Live games only; see ``get`` for finished/closed ones.
+        self.games: dict[str, game.GameState] = {s.id: s for s in store.load_all(LIVE_STATUSES)}
         self.tokens: dict[str, tuple[str, str]] = store.token_index()
         self.messages: dict[str, list[Message]] = {gid: store.load_messages(gid) for gid in self.games}
+        # Recently used finished/closed games: id -> (state, messages), least recent first.
+        self._archive: OrderedDict[str, tuple[game.GameState, list[Message]]] = OrderedDict()
         self._locks: dict[str, threading.Lock] = defaultdict(threading.Lock)
         self._global = threading.Lock()
         self.action_limiter = RateLimiter(self.cfg.action_rate_per_second, self.cfg.action_rate_per_second, clock)
@@ -80,11 +90,63 @@ class GameService:
         with self._global:
             return self._locks[game_id]
 
-    def _game(self, game_id: str) -> game.GameState:
+    def get(self, game_id: str) -> game.GameState | None:
+        """The game's current state, live or archived, or None if there is no such game."""
         state = self.games.get(game_id)
+        if state is not None:
+            return state
+        hit = self._archived(game_id)
+        return hit[0] if hit else None
+
+    def _game(self, game_id: str) -> game.GameState:
+        state = self.get(game_id)
         if state is None:
             raise ServiceError("not_found", "Game not found.", 404)
         return state
+
+    def _messages(self, game_id: str) -> list[Message]:
+        msgs = self.messages.get(game_id)
+        if msgs is not None:
+            return msgs
+        hit = self._archived(game_id)
+        return hit[1] if hit else []
+
+    def _archived(self, game_id: str) -> tuple[game.GameState, list[Message]] | None:
+        """A finished/closed game from the cache, or loaded from the database."""
+        with self._global:
+            hit = self._archive.get(game_id)
+            if hit is not None:
+                self._archive.move_to_end(game_id)
+                return hit
+        state = self.store.load_game(game_id)
+        # A live game missing from ``self.games`` is mid-creation; never cache it here.
+        if state is None or state.status in LIVE_STATUSES:
+            return None
+        hit = (state, self.store.load_messages(game_id))
+        with self._global:
+            hit = self._archive.setdefault(game_id, hit)  # another thread may have loaded it first
+            self._remember(game_id)
+        return hit
+
+    def _remember(self, game_id: str) -> None:
+        """Mark an archived game most recently used and trim the cache. Call under ``_global``."""
+        self._archive.move_to_end(game_id)
+        while len(self._archive) > self.cfg.archive_cache_size:
+            self._archive.popitem(last=False)
+
+    def _put(self, state: game.GameState) -> None:
+        """Install a committed state: live games stay resident, ended ones move to the archive."""
+        with self._global:
+            if state.status in LIVE_STATUSES:
+                self.games[state.id] = state
+                return
+            self.games.pop(state.id, None)
+            msgs = self.messages.pop(state.id, None)
+            if msgs is None:
+                old = self._archive.get(state.id)
+                msgs = old[1] if old else self.store.load_messages(state.id)
+            self._archive[state.id] = (state, msgs)
+            self._remember(state.id)
 
     def authenticate(self, game_id: str, token: str | None) -> str:
         """Return the player id for ``token`` in ``game_id``."""
@@ -117,7 +179,7 @@ class GameService:
             except ConfigError as e:
                 raise ServiceError("invalid_config", str(e)) from None
             self.store.save(work, entries, new_tokens)
-            self.games[game_id] = work
+            self._put(work)
         self.on_change(game_id, entries)
         return entries
 
@@ -130,7 +192,7 @@ class GameService:
             raise ServiceError("invalid_config", str(e)) from None
         with self._global:
             game_id = _new_id()
-            while game_id in self.games:
+            while game_id in self.games or self.store.has_game(game_id):
                 game_id = _new_id()
         player_id, token = secrets.token_hex(8), secrets.token_urlsafe(24)
         try:
@@ -254,7 +316,7 @@ class GameService:
                 if not rcpt.alive:
                     raise ServiceError("forbidden", "That player's tank is destroyed; they can only read public chat.")
             msg = self.store.add_message(game_id, self.clock(), player_id, to_id, text)
-            self.messages.setdefault(game_id, []).append(msg)
+            self._messages(game_id).append(msg)
         self.on_change(game_id, [])
         return msg
 
@@ -263,7 +325,7 @@ class GameService:
         viewer = game.find_player(s, viewer_id) if viewer_id else None
         sees_dms = viewer is not None and viewer.alive
         out = []
-        for m in self.messages.get(game_id, []):
+        for m in self._messages(game_id):
             if m.to_id is None or (sees_dms and viewer is not None and viewer.id in (m.from_id, m.to_id)):
                 out.append(m.to_dict())
         return out

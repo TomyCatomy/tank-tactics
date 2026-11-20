@@ -21,7 +21,7 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     cfg = ServerConfig()  # reads PORT, DB_PATH, ... from the environment
     service = GameService(Store(cfg.db_path), cfg)
-    log.info("loaded %d game(s) from %s", len(service.games), cfg.db_path)
+    log.info("loaded %d live game(s) from %s", len(service.games), cfg.db_path)
     uvicorn.run(create_app(service), host=cfg.host, port=cfg.port, log_level="info")
 
 

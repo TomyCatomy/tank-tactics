@@ -1,8 +1,9 @@
 """SQLite persistence via SQLAlchemy (2.0-style ORM).
 
 The server keeps game states in memory and writes every change through to the
-database in one transaction; on boot it loads every game back (and the scheduler
-then catches up any missed ticks).
+database in one transaction. On boot it loads the live games (lobby/active) back,
+and the scheduler then catches up any missed ticks; finished and closed games stay
+on disk and are read on demand.
 """
 from __future__ import annotations
 
@@ -221,9 +222,17 @@ class Store:
             game = session.get(GameRow, game_id)
             return None if game is None else _hydrate(session, game)
 
-    def load_all(self) -> list[GameState]:
+    def load_all(self, statuses: Iterable[str] | None = None) -> list[GameState]:
+        """Every game, or only those whose status is in ``statuses``."""
+        q = select(GameRow)
+        if statuses is not None:
+            q = q.where(GameRow.status.in_(list(statuses)))
         with self._lock, self._sessions() as session:
-            return [_hydrate(session, g) for g in session.scalars(select(GameRow))]
+            return [_hydrate(session, g) for g in session.scalars(q)]
+
+    def has_game(self, game_id: str) -> bool:
+        with self._lock, self._sessions() as session:
+            return session.get(GameRow, game_id) is not None
 
     def token_index(self) -> dict[str, tuple[str, str]]:
         """token hash -> (game id, player id)"""

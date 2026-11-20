@@ -222,3 +222,6 @@ class ServerConfig(BaseSettings):
         5.0, gt=0, description="Upper bound on scheduler sleeps; it otherwise wakes at the next due event."
     )
     max_message_length: int = Field(1000, ge=1, le=100_000)
+    archive_cache_size: int = Field(
+        16, ge=0, description="Finished/closed games kept in memory after use; the rest are read from disk."
+    )

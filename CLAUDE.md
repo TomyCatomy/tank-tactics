@@ -32,7 +32,7 @@ Layers, from the inside out. Each layer only depends on the ones above it:
 1. **`tank_tactics/config.py`**: `GameConfig` is a strict, frozen pydantic model split into sections (`board`, `start`, `ap`, `actions`, `jury`, `players`, `debug`, `notifications`, plus top-level `fog_of_war` and `max_duration_seconds`). Lobby overrides are partial nested dicts deep-merged by `with_overrides`; unknown keys and type coercion (`"5"`→`5`) are rejected. `ServerConfig` is the process config.
 2. **`tank_tactics/game/`**: pure rules engine with no I/O, clock or global randomness. Callers pass `now` (epoch seconds) and a `random.Random`. Public API is re-exported from `game/__init__.py`, and callers use `from tank_tactics import game` then `game.move(...)`.
 3. **`tank_tactics/store.py`**: SQLAlchemy 2.0 ORM over SQLite, which converts between rows and the `game` dataclasses.
-4. **`tank_tactics/service.py`**: `GameService` keeps every game in memory and is the only place state changes are committed.
+4. **`tank_tactics/service.py`**: `GameService` keeps live (lobby/active) games in memory, reads finished/closed ones from the DB on demand through a small LRU cache (`archive_cache_size`; use `service.get(id)`, not `service.games`, for any game), and is the only place state changes are committed.
 5. **`tank_tactics/api/`**: FastAPI app (`create_app`), with routers in `api/routes/` (one module per area), the WebSocket `Hub`, the tick scheduler and Discord notifications. `server.py` only runs uvicorn.
 
 ### Invariants that span several files

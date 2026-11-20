@@ -44,7 +44,7 @@ class Hub:
         await ws.send_json({"type": "state", "state": self.service.view(game_id, player_id)})
 
     async def broadcast(self, game_id: str) -> None:
-        state = self.service.games.get(game_id)
+        state = self.service.get(game_id)
         for ws, pid in list(self.sockets.get(game_id, {}).items()):
             try:
                 if state is None or game.find_player(state, pid) is None:
@@ -68,7 +68,7 @@ class Hub:
     def _changed(self, game_id: str, entries: list[game.LogEntry]) -> None:
         self.wake.set()  # e.g. a game just started: the next due tick moved earlier
         self.spawn(self.broadcast(game_id))
-        state = self.service.games.get(game_id)
+        state = self.service.get(game_id)
         url = state.config.notifications.discord_webhook_url if state else None
         if state is not None and url and entries:
             lines = [line for line in (discord_line(state, e) for e in entries) if line]

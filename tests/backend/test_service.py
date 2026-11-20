@@ -219,7 +219,7 @@ def test_leave_revokes_token_and_close_persists(tmp_path):
 
     svc.store.close()
     svc2, _ = make_service(db, clock)
-    restored = svc2.games[gid]
+    restored = svc2.get(gid)
     assert restored.status == "closed" and [p.name for p in restored.players] == ["Ann", "Cat"]
     assert restored.log[-1].event_type == game.EventType.LOBBY_CLOSED
 
@@ -229,3 +229,62 @@ def test_mid_game_removal_keeps_token_for_spectating():
     gid, (a, b, c), players = setup_game(svc)
     svc.remove_player(gid, a, b)
     assert svc.authenticate(gid, players[1]["token"]) == b  # still in the game, as a spectator
+
+
+# Finished games leave memory --------------------------------------------------
+
+def _finish(svc, gid, a, b):
+    """End a two-player game: ``a`` shoots ``b``'s last hit point."""
+    place(svc, gid, {a: (0, 0), b: (1, 0)})
+    game.get_player(svc.games[gid], b).hp = 1
+    svc.act(gid, a, {"type": "shoot", "target_id": b})
+
+
+def test_finished_game_is_evicted_but_still_served(tmp_path):
+    db = str(tmp_path / "t.db")
+    svc, clock = make_service(db)
+    gid, (a, b), creds = setup_game(svc, names=("Ann", "Bob"))
+    svc.send_message(gid, a, None, "gg")
+    _finish(svc, gid, a, b)
+
+    assert gid not in svc.games and gid not in svc.messages
+    view = svc.view(gid, a)
+    assert view["game"]["status"] == "finished" and view["game"]["winner_ids"] == [a]
+    svc.send_message(gid, b, None, "well played")  # post-game chat still works
+    assert [m["text"] for m in svc.view(gid, b)["messages"]] == ["gg", "well played"]
+    svc.store.close()
+
+    svc2, _ = make_service(db, clock)
+    assert gid not in svc2.games  # not loaded on boot
+    assert svc2.get(gid).status == "finished"
+    assert [m["text"] for m in svc2.view(gid, a)["messages"]] == ["gg", "well played"]
+    assert svc2.authenticate(gid, creds[0]["token"]) == a
+    svc2.store.close()
+
+
+def test_archive_cache_is_bounded():
+    svc, _ = make_service(archive_cache_size=1)
+    games = [setup_game(svc, names=("Ann", "Bob")) for _ in range(3)]
+    for gid, (a, b), _ in games:
+        _finish(svc, gid, a, b)
+    assert len(svc._archive) == 1
+    for gid, (a, _b), _ in games:  # evicted ones are re-read from the database
+        assert svc.view(gid, a)["game"]["status"] == "finished"
+    assert len(svc._archive) == 1
+    assert svc.games == {}
+
+
+def test_closed_lobby_is_evicted():
+    svc, _ = make_service()
+    host = svc.create_game("Ann")
+    svc.close_game(host["game_id"], host["player_id"])
+    assert host["game_id"] not in svc.games
+    assert svc.public_info(host["game_id"])["status"] == "closed"
+
+
+def test_unknown_game_is_not_found():
+    svc, _ = make_service()
+    assert svc.get("nope") is None
+    with pytest.raises(ServiceError) as e:
+        svc.view("nope", None)
+    assert e.value.code == "not_found"
