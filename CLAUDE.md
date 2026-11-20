@@ -1,0 +1,58 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+Tank Tactics: a slow, real-time multiplayer strategy game (one tank per player, AP accrues over real time, last tank standing wins). The original spec is the source of truth for game rules; `RULES.md` is the player-facing version and `NOTES.md` records every ambiguity that was resolved and how. Check `NOTES.md` before changing rule behaviour.
+
+## Commands
+
+The project uses a local venv at `.venv` (Windows paths shown; on macOS/Linux use `.venv/bin/python`).
+
+```bash
+python -m venv .venv && .venv/Scripts/python -m pip install -r requirements-dev.txt
+
+.venv/Scripts/python -m tank_tactics.server          # http://localhost:8080, API docs at /docs
+.venv/Scripts/python -m pytest -q                    # all tests
+.venv/Scripts/python -m pytest -q tests/backend      # or tests/frontend (browser tests)
+.venv/Scripts/python -m pytest -q tests/backend/test_game.py::test_shoot_costs_one_ap_and_deals_one_damage
+.venv/Scripts/python -m pytest -q -k fog             # by keyword
+.venv/Scripts/python -m pytest -q -m "not ui"         # skip the (slower) browser tests
+.venv/Scripts/python -m pyflakes tank_tactics scripts tests   # lint (pyflakes is not pinned in requirements)
+.venv/Scripts/python scripts/simulate.py --players 12 --runs 100 --quiet   # bot balance simulation
+```
+
+Server settings come from environment variables read by `ServerConfig` (pydantic-settings): `PORT`, `DB_PATH` (default `data/tank-tactics.db`), `HOST`, rate limits, etc. For quick manual play, create a game with `debug.fast_ticks` on so AP arrives every few seconds instead of every 24 h.
+
+The frontend (`public/`) is plain JS with no build step and is served by the API. There is no JS tooling in the repo; the client is tested through the browser tests below. In `app.js`, build DOM with `h()` / `fill()`; never pass possibly-`null` children to `replaceChildren()`, which renders them as the text "null".
+
+## Architecture
+
+Layers, from the inside out. Each layer only depends on the ones above it:
+
+1. **`tank_tactics/config.py`**: `GameConfig` is a strict, frozen pydantic model split into sections (`board`, `start`, `ap`, `actions`, `jury`, `players`, `debug`, `notifications`, plus top-level `fog_of_war` and `max_duration_seconds`). Lobby overrides are partial nested dicts deep-merged by `with_overrides`; unknown keys and type coercion (`"5"`→`5`) are rejected. `ServerConfig` is the process config.
+2. **`tank_tactics/game/`**: pure rules engine with no I/O, clock or global randomness. Callers pass `now` (epoch seconds) and a `random.Random`. Public API is re-exported from `game/__init__.py`, and callers use `from tank_tactics import game` then `game.move(...)`.
+3. **`tank_tactics/store.py`**: SQLAlchemy 2.0 ORM over SQLite, which converts between rows and the `game` dataclasses.
+4. **`tank_tactics/service.py`**: `GameService` keeps every game in memory and is the only place state changes are committed.
+5. **`tank_tactics/api/`**: FastAPI app (`create_app`), with routers in `api/routes/` (one module per area), the WebSocket `Hub`, the tick scheduler and Discord notifications. `server.py` only runs uvicorn.
+
+### Invariants that span several files
+
+- **Validate, then mutate.** Every rule function in `game/` raises `GameError` before touching state, and returns the `LogEntry` list it appended. On top of that, `GameService._mutate` runs each change on a `deepcopy` under a per-game `threading.Lock`, persists it with `store.save` in one transaction, and only then swaps the copy in. New state-changing operations must go through `_mutate`.
+- **Fog of war is enforced server-side at write time and read time.** Each log entry gets a `visibility` (`public` / `participants` / `actor_only`) when it is written (`events.fogged`), and every payload sent to a client (HTTP *and* WebSocket) is built by `GameService.view` → `game.view_for(state, viewer_id)`, which drops hidden entries and other players' AP. Never serialise `GameState` directly. Tests in `tests/backend/test_game.py` and `test_api.py` assert on the actual payloads.
+- **Time is event-driven, not polled per player.** `game.clock.advance_time(state, now)` applies every due AP tick, jury close and time limit in chronological order. It powers both the live scheduler (`api/background.py`, which sleeps until `next_due_at` or until the Hub's `wake` event fires on any change) and restart catch-up (the first scheduler pass after boot). `service.act` also calls it before each action.
+- **Threading model:** FastAPI endpoints are plain `def`, so they run in the thread pool. The service is thread-safe, and its `on_change` callback is hooked by `api/hub.py`, which hops onto the event loop with `call_soon_threadsafe` to broadcast a per-viewer state push to each WebSocket.
+- **Player actions** are a pydantic discriminated union on `type` (`game/commands.py`: `ActionType` plus one `*Command` model per action, each with `apply()`). FastAPI validates `/action` bodies against the same union. Shape validation lives there; game rules stay in `game/actions.py`.
+- **Log entries** use `event_type: EventType` (a `StrEnum` in `game/state.py`); players use `action_range` (not `range`).
+
+### Wire format is coupled to `public/app.js`
+
+The client reads the JSON from `view_for` and the config shape directly: player keys (`action_range`, `ap` only when visible), log keys (`event_type`, `details.target_hp_after`, `game_start.details`), and the nested config paths used by the lobby form's `FIELDS` list (dotted keys such as `jury.enabled`). Renaming any of these requires updating `app.js`; `tests/backend/test_api.py::test_payload_field_names` pins the main ones. The WebSocket protocol: the client's first message is `{"type": "auth", "token": ...}`, then the server pushes `{"type": "state", "state": <view>}`.
+
+All API errors use `{"error": {"code", "message"}}` (`api/errors.py` also converts FastAPI validation errors to 400s in this format).
+
+### Tests
+
+Two suites, each with its own `conftest.py` (fixtures). Plain helpers shared by both live in `tests/support.py`: `make_active(positions, **config_sections)` builds a started game with tanks at fixed tiles (e.g. `make_active({"a": (0, 0), "b": (1, 1)}, jury={"enabled": True})`), `make_service()` gives a `GameService` with an injectable `Clock`, plus `setup_game` and `place`.
+
+- `tests/backend/`: `test_game.py` (pure rules), `test_service.py` (persistence and restart catch-up on a real SQLite file via `tmp_path`, concurrency with threads and a barrier, chat privacy), `test_api.py` (the `api` fixture: FastAPI `TestClient`, needs `httpx2`; includes WebSocket pushes).
+- `tests/frontend/`: Playwright drives the real page in headless Edge (or bundled Chromium) against uvicorn in a thread. The conftest provides `server` (a `LiveServer` that can `stop()`/`start()` to simulate outages), `browser` and `page`, and marks every test here `ui`. This is the only coverage of `public/app.js`, so add a test here for client bugs. Skipped if no browser can be launched.
