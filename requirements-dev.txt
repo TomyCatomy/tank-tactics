@@ -1,0 +1,4 @@
+-r requirements.txt
+pytest>=9,<10
+httpx2>=2.16,<3  # used by FastAPI/Starlette TestClient
+playwright>=1.48,<2  # browser tests (tests/test_ui.py); uses installed Edge or `python -m playwright install chromium`
