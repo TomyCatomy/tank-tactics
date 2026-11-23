@@ -18,7 +18,7 @@ from collections import OrderedDict, defaultdict
 from typing import Any, Callable
 
 from . import game
-from .config import ConfigError, DebugConfig, GameConfig, ServerConfig
+from .config import ConfigError, DebugConfig, GameConfig, ServerConfig, is_valid_unicode
 from .store import Message, Store, hash_token
 
 
@@ -148,10 +148,12 @@ class GameService:
             self._archive[state.id] = (state, msgs)
             self._remember(state.id)
 
-    def authenticate(self, game_id: str, token: str | None) -> str:
-        """Return the player id for ``token`` in ``game_id``."""
+    def authenticate(self, game_id: str, token: Any) -> str:
+        """Return the player id for ``token`` (untrusted, any JSON value) in ``game_id``."""
         if not token:
             raise ServiceError("unauthorized", "Missing player token.", 401)
+        if not isinstance(token, str) or not is_valid_unicode(token):
+            raise ServiceError("unauthorized", "Invalid player token for this game.", 401)
         hit = self.tokens.get(hash_token(token))
         if hit is None or hit[0] != game_id:
             raise ServiceError("unauthorized", "Invalid player token for this game.", 401)

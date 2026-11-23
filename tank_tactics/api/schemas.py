@@ -1,9 +1,22 @@
 """Request and response bodies. Player actions use the game's own ``Action`` union."""
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import AfterValidator, BaseModel, ConfigDict
+from pydantic_core import PydanticCustomError
+
+from ..config import is_valid_unicode
+
+
+def _unicode_text(value: str) -> str:
+    if not is_valid_unicode(value):
+        raise PydanticCustomError("invalid_unicode", "must be valid Unicode text")
+    return value
+
+
+# Free text that gets stored and shown to other players.
+UnicodeText = Annotated[str, AfterValidator(_unicode_text)]
 
 
 class _Body(BaseModel):
@@ -11,13 +24,13 @@ class _Body(BaseModel):
 
 
 class CreateGameRequest(_Body):
-    name: str
+    name: UnicodeText
     # Partial and nested, e.g. {"jury": {"enabled": true}}; validated by GameConfig.
     config: dict[str, Any] | None = None
 
 
 class JoinRequest(_Body):
-    name: str
+    name: UnicodeText
 
 
 class ConfigUpdateRequest(_Body):
@@ -34,7 +47,7 @@ class VoteRequest(_Body):
 
 class ChatRequest(_Body):
     to_id: str | None = None  # None = public channel
-    text: str
+    text: UnicodeText
 
 
 class Credentials(BaseModel):

@@ -24,6 +24,15 @@ class ConfigError(ValueError):
     """Invalid game configuration. The message is safe to show to players."""
 
 
+def is_valid_unicode(text: str) -> bool:
+    """False for strings UTF-8 can't encode: JSON escapes can produce lone surrogates."""
+    try:
+        text.encode()
+    except UnicodeEncodeError:
+        return False
+    return True
+
+
 class _Section(BaseModel):
     # Strict: no silent coercion ("5" -> 5, true -> 1); extra keys are typos, so reject them.
     model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
@@ -145,9 +154,13 @@ class GameConfig(_Section):
         if not isinstance(data, dict):
             raise ConfigError("config must be an object")
         try:
-            return cls.model_validate(data)
+            cfg = cls.model_validate(data)
         except ValidationError as e:
             raise ConfigError(_describe(e)) from None
+        # Checked here, not in a field validator, so from_stored can still load old games.
+        if not is_valid_unicode(cfg.notifications.discord_webhook_url or ""):
+            raise ConfigError("notifications.discord_webhook_url: must be valid Unicode text")
+        return cfg
 
     def with_overrides(self, patch: Any) -> GameConfig:
         """A validated copy with ``patch`` applied. The patch is untrusted and partial:
