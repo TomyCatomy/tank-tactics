@@ -205,6 +205,27 @@ details.adv > summary { cursor: pointer; min-height: var(--tap); display: flex; 
 .sheet .act .why { font-size: .78rem; color: var(--muted); grid-column: 1 / -1; }
 .sheet .amount { width: 80px; }
 
+/* Rules modal */
+html:has(.rules-modal[open]) { overflow: hidden; }
+.rules-modal {
+  width: min(680px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); padding: 0;
+  color: var(--text); background: var(--panel);
+  border: 1px solid var(--line); border-radius: 16px; overflow: hidden;
+}
+.rules-modal[open] { display: flex; flex-direction: column; }
+.rules-modal::backdrop { background: rgba(0,0,0,.55); }
+.rules-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--line); }
+.rules-head h2 { margin: 0; }
+.rules-body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 16px 16px calc(16px + env(safe-area-inset-bottom)); outline: none; }
+.rules-body h3 { margin-top: 1.25em; color: var(--accent); }
+.rules-body h4 { margin: 1em 0 .35em; font-size: .95rem; }
+.rules-body ul { margin: 0 0 .75em; padding-left: 1.2em; }
+.rules-body li { margin-bottom: .3em; }
+.rules-warning { padding: 8px 12px; border-left: 3px solid var(--warn); background: var(--bg-2); font-weight: 600; }
+.rules-table { width: 100%; border-collapse: collapse; margin-bottom: .75em; font-size: .9rem; }
+.rules-table th, .rules-table td { padding: 6px 8px 6px 0; border-top: 1px solid var(--line); text-align: left; vertical-align: top; }
+.rules-table thead th { border-top: 0; color: var(--muted); font-size: .8rem; }
+
 /* Toasts */
 .toasts { position: fixed; z-index: 50; left: 50%; transform: translateX(-50%); bottom: calc(16px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 8px; width: min(92vw, 420px); pointer-events: none; }
 .toast { background: var(--panel-2); border: 1px solid var(--line); border-left: 4px solid var(--info); border-radius: 8px; padding: 10px 12px; box-shadow: 0 6px 20px rgba(0,0,0,.4); animation: pop .2s ease-out; }
