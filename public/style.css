@@ -225,6 +225,17 @@ html:has(.rules-modal[open]) { overflow: hidden; }
 .rules-table { width: 100%; border-collapse: collapse; margin-bottom: .75em; font-size: .9rem; }
 .rules-table th, .rules-table td { padding: 6px 8px 6px 0; border-top: 1px solid var(--line); text-align: left; vertical-align: top; }
 .rules-table thead th { border-top: 0; color: var(--muted); font-size: .8rem; }
+/* Phones: nearly the whole screen, clear of notches, with a strip of backdrop left to tap to close. */
+@media (max-width: 699px), (max-height: 500px) {
+  .rules-modal {
+    position: fixed; margin: 0;
+    inset: max(6px, env(safe-area-inset-top)) max(6px, env(safe-area-inset-right)) max(6px, env(safe-area-inset-bottom)) max(6px, env(safe-area-inset-left));
+    width: auto; max-width: none; height: auto; max-height: none;
+    border-radius: 12px;
+  }
+  .rules-head { flex: none; padding: 6px 12px; }
+  .rules-body { padding: 12px; }
+}
 
 /* Toasts */
 .toasts { position: fixed; z-index: 50; left: 50%; transform: translateX(-50%); bottom: calc(16px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 8px; width: min(92vw, 420px); pointer-events: none; }
@@ -236,6 +247,45 @@ html:has(.rules-modal[open]) { overflow: hidden; }
 /* Lobby & game over */
 .lobby { display: grid; gap: 16px; grid-template-columns: 1fr; }
 @media (min-width: 900px) { .lobby { grid-template-columns: 1fr 1fr; } }
+.lobby-tabs { display: none; }
+.lobby-players > :empty + * { margin-top: 0; }
+/* Phones: the lobby fills the screen and shows one tab at a time. Keep this query in sync with `phoneLobby` in app.js. */
+@media (max-width: 899px), (max-height: 500px) {
+  html:has(.lobby), body:has(.lobby) { height: 100vh; height: 100dvh; min-height: 0; overflow: hidden; }
+  body:has(.lobby) { display: flex; flex-direction: column; }
+  body:has(.lobby) .topbar { position: static; flex: none; min-height: 0; padding: 6px 12px; flex-wrap: nowrap; }
+  body:has(.lobby) .brand { font-size: 0; }
+  body:has(.lobby) .brand::before { content: "▣"; font-size: 18px; }
+  body:has(.lobby) .topbar-info { min-width: 0; flex-wrap: nowrap; overflow-x: auto; justify-content: flex-start; scrollbar-width: none; }
+  body:has(.lobby) #rules-open { flex: none; }
+  main:has(.lobby) { flex: 1; min-height: 0; width: 100%; padding: 8px; }
+  .lobby { display: flex; flex-direction: column; gap: 8px; height: 100%; }
+  .lobby-tabs { display: flex; flex: none; border: 1px solid var(--line); border-radius: 8px; }
+  .lobby-tabs button { min-width: 0; padding: 0 8px; font-size: .85rem; }
+  .lobby-col { display: contents; }
+  .lobby .lobby-panel { display: none; margin: 0; flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+  .lobby .lobby-panel.active { display: block; }
+  .lobby .card { padding: 12px; }
+  .lobby-overview > h2 { display: none; }
+  .lobby-overview > :nth-child(2) { margin-top: 0; }
+  .lobby-overview.stack > * + * { margin-top: 8px; }
+  .lobby-overview p { margin-bottom: 0; }
+  .lobby-start > .stack { display: flex; flex-wrap: wrap; gap: 8px; }
+  .lobby-start > .stack > * { margin: 0; }
+  .lobby-start > .stack > p { flex: 1 0 100%; }
+  .lobby-start > .stack > button { flex: 1 1 auto; }
+  .lobby .lobby-chat.active { display: flex; flex-direction: column; overflow: hidden; }
+  .lobby-chat .chat { flex: 1; min-height: 0; }
+  .lobby-chat .chat-msgs { flex: 1; min-height: 48px; max-height: none; }
+  .lobby-settings .config-actions { position: sticky; bottom: -12px; z-index: 1; margin-bottom: -12px; padding: 8px 0 12px; background: var(--panel); }
+}
+/* Short landscape screens: links side by side, so the first tab still fits. */
+@media (max-height: 500px) {
+  .lobby .lobby-overview.active { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px 12px; align-content: start; }
+  .lobby-overview.stack > * + * { margin-top: 0; }
+  .lobby-overview > p, .lobby-overview > .lobby-start { grid-column: 1 / -1; }
+  .lobby-overview label > .small { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+}
 .copy-row { display: flex; gap: 8px; }
 .copy-row input { font-family: ui-monospace, monospace; font-size: .85rem; }
 .final-table { width: 100%; border-collapse: collapse; font-size: .88rem; }
