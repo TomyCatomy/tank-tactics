@@ -22,7 +22,7 @@ python -m venv .venv && .venv/Scripts/python -m pip install -r requirements-dev.
 # AWS deploy (EC2 + CloudFront): GitHub Actions > "AWS deploy" > Run workflow on main; see deploy/aws/README.md
 ```
 
-Server settings come from environment variables read by `ServerConfig` (pydantic-settings): `PORT`, `DB_PATH` (default `data/tank-tactics.db`), `HOST`, rate limits, etc. For quick manual play, create a game with `debug.fast_ticks` on so AP arrives every few seconds instead of every 24 h.
+Server settings come from environment variables read by `ServerConfig` (pydantic-settings): `PORT`, `DB_PATH` (default `data/tank-tactics.db`), `HOST`, rate limits, etc. For quick manual play, run with `ALLOW_DEBUG=true` and create a game with `debug.fast_ticks` on so AP arrives every few seconds instead of every 24 h. `ALLOW_DEBUG` defaults to off, which hides the `debug.*` options and makes the API reject them; `make_service` turns it on for tests.
 
 The frontend (`public/`) is plain JS with no build step and is served by the API. There is no JS tooling in the repo; the client is tested through the browser tests below. In `app.js`, build DOM with `h()` / `fill()`; never pass possibly-`null` children to `replaceChildren()`, which renders them as the text "null".
 
