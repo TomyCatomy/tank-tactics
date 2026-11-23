@@ -19,14 +19,19 @@ from ..service import GameService
 from .background import run_scheduler
 from .errors import error_response, install_error_handlers
 from .hub import Hub
-from .routes import chat, games, live, lobby, play
+from .google import GoogleTokenVerifier, GoogleVerifier
+from .routes import auth, chat, games, live, lobby, play
 
 PUBLIC_DIR = Path(__file__).resolve().parent.parent.parent / "public"
 MAX_BODY_BYTES = 64 * 1024
 
 
-def create_app(service: GameService) -> FastAPI:
+def create_app(service: GameService, google_verifier: GoogleVerifier | None = None) -> FastAPI:
+    """``google_verifier`` checks Google ID tokens; by default it is built from
+    ``GOOGLE_CLIENT_ID``, and Google sign-in is off when that is unset."""
     hub = Hub(service)
+    if google_verifier is None and service.cfg.google_client_id:
+        google_verifier = GoogleTokenVerifier(service.cfg.google_client_id)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -38,6 +43,7 @@ def create_app(service: GameService) -> FastAPI:
     app = FastAPI(title="Tank Tactics", version="1.0.0", lifespan=lifespan)
     app.state.service = service
     app.state.hub = hub
+    app.state.google_verifier = google_verifier
     install_error_handlers(app)
 
     @app.middleware("http")
@@ -52,7 +58,7 @@ def create_app(service: GameService) -> FastAPI:
             response.headers.setdefault("Cache-Control", "no-cache")
         return response
 
-    for module in (games, lobby, play, chat, live):
+    for module in (games, lobby, play, chat, live, auth):
         app.include_router(module.router)
 
     @app.get("/", include_in_schema=False)

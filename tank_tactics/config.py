@@ -225,3 +225,8 @@ class ServerConfig(BaseSettings):
     archive_cache_size: int = Field(
         16, ge=0, description="Finished/closed games kept in memory after use; the rest are read from disk."
     )
+    google_client_id: str | None = Field(
+        None, description="OAuth client ID for 'Sign in with Google'. Unset = Google sign-in is off."
+    )
+    session_ttl_days: int = Field(30, ge=1, le=365, description="How long a sign-in lasts before it must be renewed.")
+    login_rate_per_minute: int = Field(10, ge=1, description="Max sign-in attempts per client IP per minute.")

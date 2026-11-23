@@ -65,3 +65,33 @@ class MessageOut(BaseModel):
 
 class Ok(BaseModel):
     ok: bool = True
+
+
+# -- accounts -------------------------------------------------------------------------
+
+class AuthConfig(BaseModel):
+    google_client_id: str | None  # None = Google sign-in is off
+
+
+class GoogleSignInRequest(_Body):
+    credential: str  # the ID token from Google Identity Services
+
+
+class UserOut(BaseModel):
+    id: str
+    name: str
+
+
+class SignedIn(BaseModel):
+    """Returned once on sign-in. The token is the session secret: keep it."""
+
+    token: str
+    user: UserOut
+
+
+class UserGame(BaseModel):
+    game_id: str
+    player_id: str
+    name: str
+    status: str
+    is_host: bool
