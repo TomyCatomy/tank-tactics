@@ -79,6 +79,46 @@ def test_game_code_is_prominent_and_copies(server, page, browser):
     assert page.evaluate("navigator.clipboard.readText()") == host["game_id"]
 
 
+def test_rules_modal_opens_and_closes_from_top_bar(server, page):
+    page.goto(server.url)
+    modal = page.locator("#rules-modal")
+    opener = page.locator("#rules-open")
+    assert not modal.is_visible()
+
+    opener.click()
+    assert modal.is_visible() and "last tank standing" in modal.inner_text()
+    page.locator("#rules-close").click()
+    assert not modal.is_visible()
+    assert page.evaluate("document.activeElement.id") == "rules-open"
+
+    opener.click()
+    page.keyboard.press("Escape")
+    assert not modal.is_visible()
+
+    opener.click()
+    page.mouse.click(2, 2)  # the backdrop
+    assert not modal.is_visible()
+
+
+def test_rules_modal_survives_state_push_and_fits_phone(server, page):
+    host, _ = create_game(server)
+    page.set_viewport_size({"width": 320, "height": 568})
+    open_as(page, server, host)
+    page.locator("#rules-open").click()
+
+    with httpx.Client(base_url=server.url) as c:
+        assert c.post(f"/api/games/{host['game_id']}/start",
+                      headers={"Authorization": f"Bearer {host['token']}"}).status_code == 200
+    page.wait_for_selector("svg.board", state="attached")
+    assert page.locator("#rules-modal").is_visible()
+
+    body = page.locator("#rules-body")
+    assert body.evaluate("el => el.scrollHeight > el.clientHeight")  # long rules scroll inside the modal
+    assert body.evaluate("el => el.scrollWidth <= el.clientWidth")
+    box = page.locator("#rules-modal").bounding_box()
+    assert box["x"] >= 0 and box["x"] + box["width"] <= 320 and box["y"] + box["height"] <= 568
+
+
 def test_lobby_text_follows_minimum_players(server, page):
     host, _ = create_game(server, config={"players": {"minimum": 4}})
     open_as(page, server, host)

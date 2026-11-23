@@ -1215,6 +1215,23 @@
       h('a', { href: '#/' }, 'Back to start')));
   }
 
+  // ----- Rules modal -----------------------------------------------------------
+  // Lives outside #app and the top-bar slots, so state pushes never close or reset it.
+
+  const rulesModal = $('#rules-modal');
+  let rulesPressedBackdrop = false;
+  $('#rules-open').addEventListener('click', () => {
+    rulesModal.showModal();
+    $('#rules-body').scrollTop = 0;
+  });
+  $('#rules-close').addEventListener('click', () => rulesModal.close());
+  // Require press and release on the backdrop, so dragging a text selection out doesn't close it.
+  rulesModal.addEventListener('pointerdown', (e) => { rulesPressedBackdrop = e.target === rulesModal; });
+  rulesModal.addEventListener('click', (e) => {
+    if (e.target === rulesModal && rulesPressedBackdrop) rulesModal.close();
+    rulesPressedBackdrop = false;
+  });
+
   // ---------------------------------------------------------------------------
   window.addEventListener('hashchange', route);
   document.addEventListener('visibilitychange', () => { if (!document.hidden && G?.state && G.tab === 'chat') renderChat(); });
