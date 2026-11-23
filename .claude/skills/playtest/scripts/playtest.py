@@ -75,7 +75,7 @@ class Server:
         self.env = {
             "HOST": "127.0.0.1", "PORT": str(self.port), "DB_PATH": str(self.db), "SCHEDULER_MAX_SLEEP": "0.2",
             "ACTION_RATE_PER_SECOND": "100000", "CHAT_RATE_PER_10S": "1000000", "LOGIN_RATE_PER_MINUTE": "100000",
-            "PYTHONUNBUFFERED": "1", **env,
+            "PYTHONUNBUFFERED": "1", "ALLOW_DEBUG": "true", **env,
         }
         self.proc: subprocess.Popen | None = None
         self.http: httpx.Client | None = None
