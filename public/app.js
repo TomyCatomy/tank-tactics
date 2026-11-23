@@ -107,6 +107,84 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Account (optional "Sign in with Google")
+  // ---------------------------------------------------------------------------
+  // The session token only identifies the account (to list and claim seats, and to
+  // link new seats). Game requests keep using the per-seat tokens in `saved`.
+  const account = {
+    get() {
+      try { return JSON.parse(localStorage.getItem('tt.session') || 'null'); } catch { return null; }
+    },
+    set(v) { try { localStorage.setItem('tt.session', JSON.stringify(v)); } catch { } },
+    clear() { try { localStorage.removeItem('tt.session'); } catch { } },
+    token() { return this.get()?.token || null; },
+  };
+
+  /** api() with the session token. An expired session signs you out and rethrows. */
+  async function accountApi(method, path, body) {
+    try {
+      return await api(method, path, body, account.token());
+    } catch (e) {
+      if (e.status === 401 && account.token()) {
+        account.clear();
+        e.message = 'Your sign-in has expired. Sign in again.';
+      }
+      throw e;
+    }
+  }
+
+  let authConfigPromise = null;
+  function authConfig() {
+    authConfigPromise ||= api('GET', '/api/auth/config').catch(() => { authConfigPromise = null; return { google_client_id: null }; });
+    return authConfigPromise;
+  }
+
+  let gisPromise = null;
+  function loadGoogleScript() {
+    gisPromise ||= new Promise((resolve, reject) => {
+      const s = h('script', { src: 'https://accounts.google.com/gsi/client', async: true });
+      s.onload = () => resolve(window.google);
+      s.onerror = () => { gisPromise = null; reject(new Error('Could not load Google sign-in.')); };
+      document.head.append(s);
+    });
+    return gisPromise;
+  }
+
+  /** Render Google's sign-in button into `el`; on success store the session and re-render. */
+  async function mountGoogleButton(el, clientId) {
+    try {
+      const google = await loadGoogleScript();
+      google.accounts.id.initialize({
+        client_id: clientId,
+        callback: async (resp) => {
+          try {
+            const res = await api('POST', '/api/auth/google', { credential: resp.credential });
+            account.set({ token: res.token, user: res.user });
+            toast(`Signed in as ${res.user.name}`, 'good');
+            route();
+          } catch (e) { toast(e.message, 'error'); }
+        },
+      });
+      google.accounts.id.renderButton(el, { theme: 'outline', size: 'large', text: 'signin_with' });
+    } catch (e) { fill(el, h('span', { class: 'muted small' }, e.message)); }
+  }
+
+  async function signOut() {
+    const token = account.token();
+    account.clear();
+    try { window.google?.accounts.id.disableAutoSelect(); } catch { }
+    if (token) await api('POST', '/api/auth/logout', undefined, token).catch(() => { });
+    route();
+  }
+
+  /** Get a seat token for the account's seat in `gid` and remember it on this device. */
+  async function claimSeat(gid, name) {
+    const res = await accountApi('POST', `/api/me/games/${encodeURIComponent(gid)}/claim`);
+    saved.set(gid, { token: res.token, playerId: res.player_id, name });
+    return res;
+  }
+
+  // ---------------------------------------------------------------------------
   // Toasts & notifications
   // ---------------------------------------------------------------------------
   function toast(text, kind = 'info', ms = 4000) {
@@ -265,12 +343,19 @@
     document.title = 'Tank Tactics';
     const app = $('#app');
     app.replaceChildren(h('div', { class: 'spinner' }, 'Loading…'));
-    let defaults;
-    try { defaults = (await api('GET', '/api/defaults')).config; } catch (e) {
+    let defaults, auth;
+    try {
+      [defaults, auth] = await Promise.all([api('GET', '/api/defaults').then((r) => r.config), authConfig()]);
+    } catch (e) {
       app.replaceChildren(h('div', { class: 'card' }, e.message));
       return;
     }
-    const nameIn = h('input', { maxlength: 24, placeholder: 'Your display name', autocomplete: 'nickname' });
+    let remote = [];
+    if (auth.google_client_id && account.token()) {
+      try { remote = await accountApi('GET', '/api/me/games'); } catch (e) { if (!account.token()) toast(e.message, 'error'); }
+    }
+    const me = auth.google_client_id ? account.get()?.user : null;
+    const nameIn = h('input', { maxlength: 24, placeholder: 'Your display name', autocomplete: 'nickname', value: me?.name?.slice(0, 24) || '' });
     const form = configForm(defaults);
     const err = h('div', { class: 'error-text' });
     const createBtn = h('button', { class: 'primary', type: 'submit' }, 'Create game');
@@ -281,7 +366,7 @@
         err.textContent = '';
         createBtn.disabled = true;
         try {
-          const res = await api('POST', '/api/games', { name: nameIn.value, config: form.getValues() });
+          const res = await accountApi('POST', '/api/games', { name: nameIn.value, config: form.getValues() });
           saved.set(res.game_id, { token: res.token, playerId: res.player_id, name: nameIn.value.trim() });
           location.hash = `#/g/${res.game_id}`;
         } catch (e) { err.textContent = e.message; } finally { createBtn.disabled = false; }
@@ -302,16 +387,41 @@
       },
     }, h('h2', {}, 'Join a game'), h('div', { class: 'row' }, codeIn, h('button', { class: 'shrink', type: 'submit' }, 'Join')));
 
-    const mine = Object.entries(saved.all()).sort((a, b) => (b[1].savedAt || 0) - (a[1].savedAt || 0));
-    const myGames = mine.length ? h('div', { class: 'card' }, h('h2', {}, 'Your games on this device'),
-      h('ul', { class: 'plist' }, mine.map(([gid, v]) => h('li', { class: 'clickable', onclick: () => { location.hash = `#/g/${gid}`; } },
-        h('span', { class: 'pname' }, `${gid}`, v.name ? h('span', { class: 'muted' }, ` · ${v.name}`) : null),
+    // Games saved on this device, then any other seats linked to the signed-in account.
+    const local = saved.all();
+    const mine = Object.entries(local).sort((a, b) => (b[1].savedAt || 0) - (a[1].savedAt || 0))
+      .map(([gid, v]) => ({ gid, name: v.name, status: remote.find((g) => g.game_id === gid)?.status }));
+    for (const g of remote) if (!local[g.game_id]) mine.push({ gid: g.game_id, name: g.name, status: g.status, remote: true });
+    const open = (g) => async () => {
+      if (g.remote) {
+        try { await claimSeat(g.gid, g.name); } catch (e) { toast(e.message, 'error'); return; }
+      }
+      location.hash = `#/g/${g.gid}`;
+    };
+    const myGames = mine.length ? h('div', { class: 'card' }, h('h2', {}, me ? 'Your games' : 'Your games on this device'),
+      h('ul', { class: 'plist' }, mine.map((g) => h('li', { class: 'clickable', onclick: open(g) },
+        h('span', { class: 'pname' }, `${g.gid}`, g.name ? h('span', { class: 'muted' }, ` · ${g.name}`) : null,
+          g.status ? h('span', { class: 'muted small' }, ` · ${g.status}`) : null),
         h('span', { class: 'pstats' }, 'Open ›'))))) : null;
+
+    let accountCard = null, gButton = null;
+    if (auth.google_client_id) {
+      if (me) {
+        accountCard = h('div', { class: 'card row account' },
+          h('span', {}, 'Signed in as ', h('b', {}, me.name)),
+          h('button', { class: 'shrink', onclick: signOut }, 'Sign out'));
+      } else {
+        gButton = h('div', { class: 'gsi-button' });
+        accountCard = h('div', { class: 'card stack account' },
+          h('p', { class: 'muted small' }, 'Optional: sign in to keep your games across devices.'), gButton);
+      }
+    }
 
     app.replaceChildren(h('div', { class: 'home' },
       h('section', { class: 'hero' }, h('h1', {}, 'Tank Tactics'),
         h('p', {}, 'Everyone gets one tank and one action point a day. Spend AP to move, shoot, upgrade range or gift it to a friend. Make alliances. Break them. Last tank standing wins.')),
-      myGames, join, create));
+      accountCard, myGames, join, create));
+    if (gButton) mountGoogleButton(gButton, auth.google_client_id);
   }
 
   // ---------------------------------------------------------------------------
@@ -321,6 +431,10 @@
     const app = $('#app');
     if (saved.get(gid)?.token) { location.hash = `#/g/${gid}`; return; }
     app.replaceChildren(h('div', { class: 'spinner' }, 'Loading…'));
+    // Signed in and already seated in this game (e.g. from another device): just open it.
+    if (account.token() && (await authConfig()).google_client_id) {
+      try { await claimSeat(gid); location.hash = `#/g/${gid}`; return; } catch { /* not seated here */ }
+    }
     let info;
     try { info = await api('GET', `/api/games/${encodeURIComponent(gid)}`); } catch (e) {
       app.replaceChildren(h('div', { class: 'card' }, h('h2', {}, 'Game not found'), h('p', {}, e.message), h('a', { href: '#/' }, 'Back')));
@@ -337,7 +451,8 @@
         h('a', { href: '#/' }, 'Back')));
       return;
     }
-    const nameIn = h('input', { maxlength: 24, placeholder: 'Your display name', autocomplete: 'nickname', required: true });
+    const me = account.get()?.user;
+    const nameIn = h('input', { maxlength: 24, placeholder: 'Your display name', autocomplete: 'nickname', required: true, value: me?.name?.slice(0, 24) || '' });
     const err = h('div', { class: 'error-text' });
     app.replaceChildren(h('form', {
       class: 'card stack', style: { maxWidth: '480px', margin: '0 auto' },
@@ -345,7 +460,7 @@
         ev.preventDefault();
         err.textContent = '';
         try {
-          const res = await api('POST', `/api/games/${gid}/join`, { name: nameIn.value });
+          const res = await accountApi('POST', `/api/games/${gid}/join`, { name: nameIn.value });
           saved.set(gid, { token: res.token, playerId: res.player_id, name: nameIn.value.trim() });
           location.hash = `#/g/${gid}`;
         } catch (e) { err.textContent = e.message; }

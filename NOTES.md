@@ -89,5 +89,8 @@ Where the spec left room for interpretation, this is what I chose and why.
     appears in game views.
 23. **Expired session on create/join is a 401**, not a silent anonymous join, so a player
     never ends up with an unlinked seat they think is linked.
-24. **Schema upgrade:** `create_all` adds the new tables, and `store._migrate` adds
+24. **`Referrer-Policy` is `strict-origin-when-cross-origin`** (was `no-referrer`), because
+    Google's sign-in button needs the page origin. Only the origin is sent cross-origin,
+    and rejoin tokens are in the URL fragment, which is never sent.
+25. **Schema upgrade:** `create_all` adds the new tables, and `store._migrate` adds
     `players.user_id` to databases from before accounts.

@@ -53,7 +53,10 @@ def create_app(service: GameService, google_verifier: GoogleVerifier | None = No
             return error_response("too_large", "Request body too large.", 413)
         response = await call_next(request)
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
-        response.headers.setdefault("Referrer-Policy", "no-referrer")
+        # Google's sign-in button checks the page origin via the referrer, so send the
+        # origin (never the path) cross-origin. Rejoin tokens live in the URL fragment,
+        # which browsers never put in a referrer.
+        response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
         if not request.url.path.startswith("/api/"):
             response.headers.setdefault("Cache-Control", "no-cache")
         return response
