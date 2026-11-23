@@ -18,7 +18,7 @@ from collections import OrderedDict, defaultdict
 from typing import Any, Callable
 
 from . import game
-from .config import ConfigError, GameConfig, ServerConfig
+from .config import ConfigError, DebugConfig, GameConfig, ServerConfig
 from .store import Message, Store, hash_token
 
 
@@ -185,9 +185,16 @@ class GameService:
 
     # -- lobby ------------------------------------------------------------------
 
+    def _check_debug(self, before: DebugConfig, after: DebugConfig) -> None:
+        """Without ``allow_debug``, debug options can't be changed except back to the defaults.
+        Games that already have them keep them, so a config change can't break a running game."""
+        if not self.cfg.allow_debug and after != before and after != DebugConfig():
+            raise ConfigError("Debug options are disabled on this server.")
+
     def create_game(self, host_name: Any, config: Any = None) -> dict[str, str]:
         try:
             cfg = GameConfig.parse(config)
+            self._check_debug(DebugConfig(), cfg.debug)
         except ConfigError as e:
             raise ServiceError("invalid_config", str(e)) from None
         with self._global:
@@ -223,7 +230,13 @@ class GameService:
                 "max_players": s.config.players.maximum}
 
     def update_config(self, game_id: str, player_id: str, patch: Any) -> None:
-        self._mutate(game_id, lambda s: game.update_config(s, player_id, patch, self.clock()))
+        def apply(s: game.GameState) -> list[game.LogEntry]:
+            before = s.config.debug
+            entries = game.update_config(s, player_id, patch, self.clock())
+            self._check_debug(before, s.config.debug)  # raising discards _mutate's working copy
+            return entries
+
+        self._mutate(game_id, apply)
 
     def start_game(self, game_id: str, player_id: str) -> None:
         self._mutate(game_id, lambda s: game.start_game(s, player_id, self.clock(), self.rng))
@@ -338,4 +351,5 @@ class GameService:
         v = game.view_for(s, viewer_id)
         v["messages"] = self.visible_messages(game_id, viewer_id)
         v["server_now"] = self.clock()
+        v["allow_debug"] = self.cfg.allow_debug
         return v

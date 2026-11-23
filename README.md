@@ -62,7 +62,8 @@ python -m tank_tactics.server        # http://localhost:8080
 Open the page, create a game, and share the invite link. Each player gets a personal
 **rejoin link** in the lobby (it contains their secret token) for switching devices.
 
-To try a game quickly, tick **Debug: fast ticks** when creating it: AP then arrives every
+To try a game quickly, start the server with `ALLOW_DEBUG=true` and tick
+**Debug: fast ticks** when creating it: AP then arrives every
 `debug.tick_seconds` (10 s by default) instead of every 24 hours. Two browser windows
 (one private) are enough to play against yourself.
 
@@ -77,6 +78,7 @@ is validated on startup.
 | `HOST` | `0.0.0.0` | Bind address |
 | `PORT` | `8080` | HTTP port |
 | `DB_PATH` | `data/tank-tactics.db` | SQLite file (created on first run) |
+| `ALLOW_DEBUG` | `false` | Let hosts use the `debug.*` game options. Off hides them and the API rejects them; games that already use them keep them |
 | `ACTION_RATE_PER_SECOND` | `5` | Per-player action rate limit |
 | `CHAT_RATE_PER_10S` | `20` | Per-player chat rate limit |
 | `SCHEDULER_MAX_SLEEP` | `5` | Max seconds between scheduler checks |
@@ -112,7 +114,7 @@ for example `{"jury": {"enabled": true}}`, and are validated through the same mo
 | `fog_of_war` | `"off"` | or `"alliance"` |
 | `max_duration_seconds` | `null` | optional time limit |
 | `players.minimum` / `players.maximum` | `2` / `64` | a game never starts with < 2 |
-| `debug.fast_ticks` / `debug.tick_seconds` | `false` / `10` | testing aid |
+| `debug.fast_ticks` / `debug.tick_seconds` | `false` / `10` | testing aid (needs `ALLOW_DEBUG=true`) |
 | `notifications.discord_webhook_url` | `null` | posts public events only |
 
 ## Tests

@@ -187,7 +187,9 @@
     o[last] = value;
   }
 
-  function configForm(values, { editable = true, onDirty } = {}) {
+  function configForm(values, { editable = true, onDirty, allowDebug = false } = {}) {
+    // Hidden fields are also left out of getValues, so saving keeps their current value.
+    const fields = allowDebug ? FIELDS : FIELDS.filter((f) => !f.k.startsWith('debug.'));
     const inputs = {};
     const field = (f) => {
       const v = getPath(values, f.k);
@@ -210,14 +212,14 @@
       // `wide` fields span the whole row, for options too long for one grid column.
       return h('label', { class: f.wide ? 'wide' : null }, h('span', {}, f.label), input, f.hint && !f.nullable ? h('div', { class: 'hint' }, f.hint) : null);
     };
-    const main = h('div', { class: 'config-grid' }, FIELDS.filter((f) => f.main).map(field));
+    const main = h('div', { class: 'config-grid' }, fields.filter((f) => f.main).map(field));
     const adv = h('details', { class: 'adv' }, h('summary', {}, 'Advanced rules'),
-      h('div', { class: 'config-grid' }, FIELDS.filter((f) => !f.main).map(field)));
+      h('div', { class: 'config-grid' }, fields.filter((f) => !f.main).map(field)));
     const root = h('div', { class: 'stack' }, main, adv);
     if (onDirty) root.addEventListener('input', onDirty);
     root.getValues = () => {
       const out = {};
-      for (const f of FIELDS) {
+      for (const f of fields) {
         const el = inputs[f.k];
         let v;
         if (f.type === 'bool') v = el.checked;
@@ -265,13 +267,13 @@
     document.title = 'Tank Tactics';
     const app = $('#app');
     app.replaceChildren(h('div', { class: 'spinner' }, 'Loading…'));
-    let defaults;
-    try { defaults = (await api('GET', '/api/defaults')).config; } catch (e) {
+    let defaults, allowDebug;
+    try { ({ config: defaults, allow_debug: allowDebug } = await api('GET', '/api/defaults')); } catch (e) {
       app.replaceChildren(h('div', { class: 'card' }, e.message));
       return;
     }
     const nameIn = h('input', { maxlength: 24, placeholder: 'Your display name', autocomplete: 'nickname' });
-    const form = configForm(defaults);
+    const form = configForm(defaults, { allowDebug });
     const err = h('div', { class: 'error-text' });
     const createBtn = h('button', { class: 'primary', type: 'submit' }, 'Create game');
     const create = h('form', {
@@ -636,10 +638,10 @@
         }, 'Leave lobby')));
 
     // Config (rebuilt only if it changed and the host isn't mid-edit)
-    const key = JSON.stringify(st.game.config);
+    const key = JSON.stringify([st.game.config, st.allow_debug]);
     if (key !== G.configKey && !G.configDirty) {
       G.configKey = key;
-      const form = configForm(st.game.config, { editable: isHost, onDirty: () => { G.configDirty = true; } });
+      const form = configForm(st.game.config, { editable: isHost, allowDebug: st.allow_debug, onDirty: () => { G.configDirty = true; } });
       const kids = [form];
       if (isHost) {
         kids.push(h('div', { class: 'row' },

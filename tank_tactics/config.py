@@ -216,6 +216,9 @@ class ServerConfig(BaseSettings):
     host: str = "0.0.0.0"
     port: int = Field(8080, ge=1, le=65535)
     db_path: str = "data/tank-tactics.db"
+    allow_debug: bool = Field(
+        False, description="Let hosts turn on the debug.* game options. Off hides them and rejects them in the API."
+    )
     action_rate_per_second: float = Field(5.0, gt=0, description="Max game actions per player per second.")
     chat_rate_per_10s: int = Field(20, ge=1, description="Max chat messages per player per 10 seconds.")
     scheduler_max_sleep: float = Field(

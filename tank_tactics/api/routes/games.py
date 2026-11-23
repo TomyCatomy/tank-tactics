@@ -13,9 +13,9 @@ router = APIRouter(prefix="/api", tags=["games"])
 
 
 @router.get("/defaults")
-def defaults() -> dict[str, Any]:
+def defaults(service: ServiceDep) -> dict[str, Any]:
     """The default game rules (what the create form starts from)."""
-    return {"config": GameConfig().model_dump()}
+    return {"config": GameConfig().model_dump(), "allow_debug": service.cfg.allow_debug}
 
 
 @router.post("/games", status_code=201)

@@ -214,3 +214,19 @@ def test_config_dropdowns_show_full_option_text(server, page, viewport):
     page.wait_for_selector("text=Game settings")
     page.locator("details.adv summary").first.click()
     assert page.evaluate(_CLIPPED_SELECTS) == [], "lobby settings"
+
+
+def test_debug_options_hidden_when_not_allowed(server_without_debug, page):
+    server = server_without_debug
+    page.goto(server.url)
+    page.wait_for_selector("text=Create a game")
+    assert "Debug" not in visible_text(page, "#app")
+    page.fill("input[placeholder='Your display name']", "Host")
+    page.click("button:has-text('Create game')")  # the hidden fields must not break creation
+    page.wait_for_selector("text=Game settings")
+    assert "Debug" not in visible_text(page, "#app")
+
+
+def test_debug_options_shown_when_allowed(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("text=Debug: fast ticks")
