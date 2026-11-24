@@ -61,6 +61,7 @@ class Clock:
 def make_service(path: str = ":memory:", clock: Clock | None = None, **server_cfg: Any) -> tuple[GameService, Clock]:
     """A GameService on SQLite (in memory by default) with a fake clock and seeded RNG."""
     clock = clock or Clock()
+    server_cfg.setdefault("allow_debug", True)  # tests use debug options; pass False to test the lock
     svc = GameService(Store(path), ServerConfig(**server_cfg), clock=clock, rng=random.Random(42))
     return svc, clock
 

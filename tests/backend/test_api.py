@@ -3,9 +3,13 @@ from __future__ import annotations
 
 import json
 
+import pytest
 from fastapi.testclient import TestClient
 
-from ..support import place
+from tank_tactics.api import create_app
+from tank_tactics.config import GameConfig
+
+from ..support import make_service, place
 
 
 def auth(p: dict) -> dict:
@@ -217,3 +221,39 @@ def test_websocket_tells_departed_players_they_are_out(api):
                 ws.__exit__(None, None, None)
             except Exception:
                 pass
+
+
+# -- ALLOW_DEBUG ----------------------------------------------------------------------
+
+@pytest.fixture
+def locked_api():
+    svc, clock = make_service(action_rate_per_second=100, allow_debug=False)
+    with TestClient(create_app(svc)) as client:
+        yield client, svc, clock
+
+
+@pytest.mark.parametrize("debug", [{"fast_ticks": True}, {"local_seats": True}, {"tick_seconds": 5}])
+def test_debug_options_rejected_when_not_allowed(locked_api, debug):
+    client, _, _ = locked_api
+    assert client.get("/api/defaults").json()["allow_debug"] is False
+    r = client.post("/api/games", json={"name": "Ann", "config": {"debug": debug}})
+    assert r.status_code == 400 and r.json()["error"]["code"] == "invalid_config"
+
+    host = client.post("/api/games", json={"name": "Ann"}).json()
+    r = client.post(f"/api/games/{host['game_id']}/config", json={"config": {"debug": debug}}, headers=auth(host))
+    assert r.status_code == 400 and r.json()["error"]["code"] == "invalid_config"
+    state = client.get(f"/api/games/{host['game_id']}/state", headers=auth(host)).json()
+    assert state["allow_debug"] is False
+    assert state["game"]["config"]["debug"] == GameConfig().debug.model_dump()
+
+
+def test_existing_debug_game_survives_turning_the_flag_off(tmp_path):
+    path = str(tmp_path / "g.db")
+    on, _ = make_service(path, allow_debug=True)
+    host = on.create_game("Ann", {"debug": {"fast_ticks": True}})
+
+    off, _ = make_service(path, allow_debug=False)
+    off.update_config(host["game_id"], host["player_id"], {"jury": {"enabled": True}})  # unrelated edits still work
+    assert off.get(host["game_id"]).config.debug.fast_ticks is True
+    off.update_config(host["game_id"], host["player_id"], {"debug": {"fast_ticks": False}})  # and it can be turned off
+    assert off.get(host["game_id"]).config.debug.fast_ticks is False
