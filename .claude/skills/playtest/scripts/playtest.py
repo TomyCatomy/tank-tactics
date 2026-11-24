@@ -75,7 +75,7 @@ class Server:
         self.env = {
             "HOST": "127.0.0.1", "PORT": str(self.port), "DB_PATH": str(self.db), "SCHEDULER_MAX_SLEEP": "0.2",
             "ACTION_RATE_PER_SECOND": "100000", "CHAT_RATE_PER_10S": "1000000", "LOGIN_RATE_PER_MINUTE": "100000",
-            "PYTHONUNBUFFERED": "1", **env,
+            "PYTHONUNBUFFERED": "1", "ALLOW_DEBUG": "true", **env,
         }
         self.proc: subprocess.Popen | None = None
         self.http: httpx.Client | None = None
@@ -1482,6 +1482,91 @@ def hostile_names_are_not_rendered_as_html(t: T):
         t.eq(pg.locator("#app img[src='x']").count(), 0, "name was rendered as an HTML element")
     finally:
         pg.context.close()
+
+
+def rules_button_works(t: T, pg, where: str, width: int):
+    """The top-bar button is on screen, opens the rules, and closes again."""
+    opener = pg.locator("header.topbar #rules-open")
+    modal = pg.locator("#rules-modal")
+    t.must(opener.is_visible(), f"{where}: no Rules button in the top bar")
+    box = opener.bounding_box()
+    t.ok(box["x"] >= 0 and box["x"] + box["width"] <= width, f"{where}: Rules button is off screen")
+    t.ok(not modal.is_visible(), f"{where}: rules are open before being asked for")
+    opener.click()
+    t.must(modal.is_visible(), f"{where}: Rules button did not open the modal")
+    t.ok("last tank standing" in modal.inner_text(), f"{where}: modal has no rules text")
+    no_junk_text(t, pg, f"rules modal on {where}")
+    over = pg.locator("#rules-body").evaluate("el => el.scrollWidth - el.clientWidth")
+    t.ok(over <= 1, f"{where}: rules scroll sideways by {over}px at {width}px wide")
+    m = modal.bounding_box()
+    t.ok(m["x"] >= 0 and m["x"] + m["width"] <= width and m["y"] >= 0 and m["y"] + m["height"] <= pg.viewport_size["height"],
+         f"{where}: modal does not fit the screen at {width}px")
+    pg.locator("#rules-close").click()
+    t.ok(not modal.is_visible(), f"{where}: Close did not close the modal")
+
+
+@scenario("browser", "browser")
+def rules_modal_from_the_top_bar(t: T):
+    for width, height in ((1280, 800), (320, 568)):
+        host, guest = t.lobby(2)
+        pg = t.h.browser.page(t, width, height)
+        try:
+            pg.goto(t.srv.url)
+            pg.wait_for_selector("#rules-open")
+            rules_button_works(t, pg, "home page", width)
+
+            open_seat(t, pg, host)
+            rules_button_works(t, pg, "lobby", width)
+
+            # A live push re-renders the whole game page underneath the open modal.
+            modal, body = pg.locator("#rules-modal"), pg.locator("#rules-body")
+            pg.locator("#rules-open").click()
+            t.ok(body.evaluate("el => el.scrollHeight > el.clientHeight"), "long rules cannot scroll inside the modal")
+            body.evaluate("el => { el.scrollTop = 120; }")
+            t.good(t.post(host, "start"), "start")
+            pg.wait_for_selector("svg.board", state="attached")
+            t.ok(modal.is_visible(), "a live game update closed the rules")
+            t.eq(body.evaluate("el => el.scrollTop"), 120, "a live game update reset the rules scroll position")
+            pg.keyboard.press("Escape")
+            t.ok(not modal.is_visible(), "Esc did not close the rules")
+            t.eq(pg.evaluate("document.activeElement?.id"), "rules-open", "focus did not return to the Rules button")
+            rules_button_works(t, pg, "active game", width)
+
+            # The game underneath must not be reachable while the rules are open.
+            pg.locator("#rules-open").click()
+            covered = pg.evaluate("""() => { const b = document.querySelector('.game-code').getBoundingClientRect();
+                const el = document.elementFromPoint(b.x + b.width / 2, b.y + b.height / 2);
+                return !!el.closest('#rules-modal'); }""")
+            t.ok(covered, "the game can still be clicked behind the open rules")
+
+            # Dragging a text selection out of the modal is not a backdrop click.
+            b = body.bounding_box()
+            pg.mouse.move(b["x"] + 20, b["y"] + 20)
+            pg.mouse.down()
+            pg.mouse.move(2, 2)
+            pg.mouse.up()
+            t.ok(modal.is_visible(), "dragging out of the rules closed them")
+            pg.mouse.click(2, 2)
+            t.ok(not modal.is_visible(), "clicking the backdrop did not close the rules")
+
+            # The numbers shown are the documented defaults, so compare them with the real ones.
+            pg.locator("#rules-open").click()
+            text = " ".join(body.inner_text().split())
+            cfg = t.view(host)["game"]["config"]
+            t.ok(f"start with {cfg['start']['hp']} HP, {cfg['start']['ap']} AP (action point) and range "
+                 f"{cfg['start']['action_range']}" in text, "rules disagree with the default starting stats")
+            t.eq(cfg["ap"]["interval_seconds"], 86400, "rules say AP arrives every 24 hours")
+            t.ok("+1 AP every 24 hours" in text, "rules lost the AP interval")
+            cost = cfg["actions"]["range_upgrade_cost"]
+            t.ok(re.search(rf"Upgrade range\s+{cost} AP", text), f"rules disagree with the upgrade cost of {cost} AP")
+            pg.keyboard.press("Escape")
+
+            # Still there once the game is over.
+            t.good(t.req("POST", f"/api/games/{host.game_id}/remove", host, json={"player_id": guest.id}), "remove")
+            pg.locator("#topbar-info .badge", has_text="Finished").wait_for()
+            rules_button_works(t, pg, "finished game", width)
+        finally:
+            pg.context.close()
 
 
 @scenario("browser", "browser", "timed")

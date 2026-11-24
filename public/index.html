@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
   <meta name="theme-color" content="#14181d">
   <title>Tank Tactics</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect x='4' y='14' width='24' height='12' rx='3' fill='%2384cc16'/><rect x='10' y='8' width='12' height='8' rx='2' fill='%2365a30d'/><rect x='20' y='10' width='10' height='3' fill='%2365a30d'/></svg>">
@@ -13,9 +13,80 @@
     <a href="#/" class="brand">Tank Tactics</a>
     <div id="topbar-game" class="topbar-game"></div>
     <div id="topbar-info" class="topbar-info"></div>
+    <button id="rules-open" class="small" type="button" aria-haspopup="dialog">Rules</button>
   </header>
   <main id="app" aria-live="polite"></main>
   <div id="sheet-root"></div>
+  <dialog id="rules-modal" class="rules-modal" aria-labelledby="rules-title">
+    <div class="rules-head">
+      <h2 id="rules-title">How to play</h2>
+      <button id="rules-close" class="small ghost" type="button">Close</button>
+    </div>
+    <div id="rules-body" class="rules-body" tabindex="0" autofocus>
+      <p class="rules-warning">This game can get personal. Play with people who'll still be your friends afterwards.</p>
+
+      <h3>The goal</h3>
+      <p>Be the <strong>last tank standing</strong>.</p>
+
+      <h3>The board</h3>
+      <ul>
+        <li>Everyone has one tank on a square grid. Only one tank fits on a tile.</li>
+        <li>Everyone can always see every tank's <strong>position, HP (health) and range</strong>.</li>
+        <li>Distance counts diagonal steps the same as straight ones. A tank one step diagonally away is at distance 1, and a tank 2 across and 2 down is at distance 2.</li>
+        <li>There are no walls and no line of sight. You can shoot "through" other tanks. <strong>Range is the only limit.</strong></li>
+      </ul>
+
+      <h3>Your tank</h3>
+      <p>You start with <strong>3 HP</strong>, <strong>1 AP</strong> (action point) and <strong>range 2</strong>. The host may have changed these numbers; the game page shows the real values.</p>
+
+      <h3>Action points</h3>
+      <ul>
+        <li>There are <strong>no turns</strong>. Every living tank gets <strong>+1 AP every 24 hours</strong>, all at the same moment.</li>
+        <li>Spend AP whenever you like, as much as you have, in any order. Unspent AP is kept. Saving up is a legitimate strategy.</li>
+      </ul>
+
+      <h3>Actions</h3>
+      <table class="rules-table">
+        <thead><tr><th scope="col">Action</th><th scope="col">Cost</th><th scope="col">What it does</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Move</th><td>1 AP</td><td>Move one tile in any of the 8 directions, onto an empty tile.</td></tr>
+          <tr><th scope="row">Shoot</th><td>1 AP</td><td>Deal 1 damage to any tank within your range. Allies too.</td></tr>
+          <tr><th scope="row">Give AP</th><td>the AP you give</td><td>Hand any amount of your AP to a tank within your range.</td></tr>
+          <tr><th scope="row">Give HP</th><td>the HP you give</td><td>Hand some of your HP to a tank within your range. You must keep at least 1.</td></tr>
+          <tr><th scope="row">Upgrade range</th><td>3 AP</td><td>Your range goes up by 1, permanently.</td></tr>
+        </tbody>
+      </table>
+      <p>"Within range" means within <strong>your</strong> range.</p>
+
+      <h3>Destroying tanks</h3>
+      <ul>
+        <li>A tank at <strong>0 HP is destroyed</strong> and taken off the board.</li>
+        <li><strong>Loot:</strong> whoever fires the destroying shot takes <strong>all of the victim's AP</strong>.</li>
+        <li>If your tank is destroyed you can still watch the game and use the public chat. You can no longer send or receive private messages.</li>
+      </ul>
+
+      <h3>Talking</h3>
+      <p>There is a public chat and private messages between any two players. Deals, threats and betrayals all happen here. Nothing stops you from shooting someone who just gave you AP, and nothing stops them from doing it to you.</p>
+
+      <h3>Optional rules (the host chooses)</h3>
+      <h4>The jury (off by default)</h4>
+      <p>If the jury is on, destroyed players become <strong>jurors</strong>. Once a day, each juror can vote for one living player, and can change that vote until the day closes. The living player with the most votes gets <strong>+1 AP</strong>. If players tie, they all get it (or, if the host chose, one of them at random). With no votes, nobody gets anything. Votes are public unless the host made them secret.</p>
+      <p>So be nice to the people you kill: they vote.</p>
+
+      <h4>Fog of war (off by default)</h4>
+      <ul>
+        <li><strong>Off:</strong> everything is public, including everyone's AP and every gift.</li>
+        <li><strong>Alliance:</strong> you see only <strong>your own</strong> AP. A gift of AP or HP is seen only by the giver and the receiver; nobody else learns it happened. HP changes on the board can still give a gift of HP away. When a tank is destroyed, everyone sees the kill, but only the killer sees how much AP they looted.</li>
+      </ul>
+      <p>Positions, HP, range, shots, moves, kills, range upgrades and the winner are always public.</p>
+
+      <h4>Other host settings</h4>
+      <p>The host can also change the board size, starting stats, how often AP arrives, the upgrade cost, an AP cap or a maximum range, and whether destroyed tanks leave wrecks that block their tile. The host can also turn off giving HP or looting, and set a time limit. If the time limit is reached, the living tank with the most HP wins. Ties go to the most AP, then the highest range. If still tied, the win is shared.</p>
+
+      <h3>Winning</h3>
+      <p>The game ends when exactly one tank is left. That player wins.</p>
+    </div>
+  </dialog>
   <div id="toasts" class="toasts" role="status"></div>
   <script src="/static/app.js"></script>
 </body>

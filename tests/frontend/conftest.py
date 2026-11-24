@@ -99,6 +99,17 @@ def auth_server():
         srv.stop()
 
 
+@pytest.fixture
+def server_without_debug():
+    """Like ``server``, but configured as production: ``allow_debug`` is off."""
+    svc, _ = make_service(action_rate_per_second=100, allow_debug=False)
+    srv = LiveServer(svc)
+    srv.start()
+    yield srv
+    if srv.running:
+        srv.stop()
+
+
 @pytest.fixture(scope="session")
 def browser():
     sync_api = pytest.importorskip("playwright.sync_api")

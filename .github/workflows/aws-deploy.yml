@@ -1,0 +1,271 @@
+# AWS deployment. Manual: Actions > AWS deploy > Run workflow (branch: main).
+# Automatic: a push to main that changes shipped files redeploys if the server is up.
+# One-time setup and architecture: deploy/aws/README.md
+name: AWS deploy
+
+on:
+  push:
+    branches: [main]
+    paths: # exactly what the code bundle contains; other pushes must not restart the game
+      - "tank_tactics/**"
+      - "public/**"
+      - "requirements.txt"
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "up = create, redeploy = ship code and keep data, down = delete all game data"
+        type: choice
+        required: true
+        default: redeploy
+        options: [up, redeploy, down]
+      instance_type:
+        description: "Instance type (used by up)"
+        type: choice
+        default: t4g.small
+        options: [t4g.small, t4g.micro]
+      confirm:
+        description: "For down only: type DELETE"
+        type: string
+        required: false
+
+permissions:
+  contents: read
+  id-token: write # lets the job request short-lived AWS credentials through OIDC
+
+concurrency:
+  group: aws-deploy
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: eu-north-1
+  APP: tank-tactics
+  COMMENT: Tank Tactics
+  SG_NAME: tank-tactics-web
+  INSTANCE_PROFILE: tank-tactics-ec2
+  ACTION: ${{ inputs.action || 'redeploy' }} # inputs are empty on push
+  INSTANCE_TYPE: ${{ inputs.instance_type }}
+  CONFIRM: ${{ inputs.confirm }}
+  GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
+
+jobs:
+  deploy:
+    name: ${{ inputs.action || 'redeploy' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check inputs
+        run: |
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::error::Run this workflow from main."; exit 1
+          fi
+          if [ "$ACTION" = down ] && [ "$CONFIRM" != DELETE ]; then
+            echo "::error::down deletes all game data. Type DELETE in the confirm box."; exit 1
+          fi
+          if ! [[ "$GOOGLE_CLIENT_ID" =~ ^[A-Za-z0-9._-]*$ ]]; then
+            echo "::error::The GOOGLE_CLIENT_ID variable contains invalid characters."; exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - name: Sign in to AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: eu-north-1
+
+      - name: Set deployment bucket
+        run: |
+          account=$(aws sts get-caller-identity --query Account --output text)
+          echo "BUCKET=$APP-deploy-$account" >> "$GITHUB_ENV"
+
+      # Runs after any queued up/down has finished (see concurrency), so it sees the final state.
+      - name: Skip push if server is not up
+        id: target
+        if: github.event_name == 'push'
+        run: |
+          instance=$(aws ec2 describe-instances \
+            --filters "Name=tag:app,Values=$APP" Name=instance-state-name,Values=running \
+            --query 'Reservations[0].Instances[0].InstanceId' --output text)
+          if [ "$instance" = None ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "### Skipped: server is not up" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload code bundle
+        if: env.ACTION != 'down' && steps.target.outputs.skip != 'true'
+        run: |
+          git archive --format=tar.gz -o app.tar.gz HEAD -- tank_tactics public requirements.txt
+          aws s3 cp app.tar.gz "s3://$BUCKET/app.tar.gz" --only-show-errors
+
+      - name: Create server
+        if: env.ACTION == 'up'
+        run: |
+          existing=$(aws ec2 describe-instances \
+            --filters "Name=tag:app,Values=$APP" Name=instance-state-name,Values=pending,running,stopping,stopped \
+            --query 'Reservations[].Instances[].InstanceId' --output text)
+          if [ -n "$existing" ]; then
+            echo "::error::$APP is already up ($existing). Use redeploy, or run down first."; exit 1
+          fi
+
+          vpc=$(aws ec2 describe-vpcs --filters Name=is-default,Values=true --query 'Vpcs[0].VpcId' --output text)
+          subnet=$(aws ec2 describe-subnets --filters "Name=vpc-id,Values=$vpc" Name=default-for-az,Values=true \
+            --query 'sort_by(Subnets,&AvailabilityZone)[0].SubnetId' --output text)
+          ami=$(aws ssm get-parameter --name /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64 \
+            --query Parameter.Value --output text)
+          prefix_list=$(aws ec2 describe-managed-prefix-lists \
+            --filters Name=prefix-list-name,Values=com.amazonaws.global.cloudfront.origin-facing \
+            --query 'PrefixLists[0].PrefixListId' --output text)
+
+          sg=$(aws ec2 describe-security-groups --filters "Name=group-name,Values=$SG_NAME" "Name=vpc-id,Values=$vpc" \
+            --query 'SecurityGroups[0].GroupId' --output text)
+          if [ "$sg" = None ]; then
+            sg=$(aws ec2 create-security-group --group-name "$SG_NAME" --vpc-id "$vpc" \
+              --description "Tank Tactics: app port from CloudFront only" \
+              --tag-specifications "ResourceType=security-group,Tags=[{Key=app,Value=$APP}]" \
+              --query GroupId --output text)
+            aws ec2 authorize-security-group-ingress --group-id "$sg" --ip-permissions \
+              "IpProtocol=tcp,FromPort=8080,ToPort=8080,PrefixListIds=[{PrefixListId=$prefix_list,Description=CloudFront origin-facing}]" \
+              >/dev/null
+          fi
+
+          sed -e "s/__BUCKET__/$BUCKET/g" -e "s/__REGION__/$AWS_REGION/g" \
+              -e "s/__GOOGLE_CLIENT_ID__/$GOOGLE_CLIENT_ID/g" deploy/aws/userdata.sh > userdata.rendered.sh
+          instance=$(aws ec2 run-instances --image-id "$ami" --instance-type "$INSTANCE_TYPE" --subnet-id "$subnet" \
+            --security-group-ids "$sg" --iam-instance-profile "Name=$INSTANCE_PROFILE" \
+            --credit-specification CpuCredits=standard \
+            --metadata-options HttpTokens=required,HttpEndpoint=enabled,HttpPutResponseHopLimit=1 \
+            --block-device-mappings 'DeviceName=/dev/xvda,Ebs={VolumeSize=10,VolumeType=gp3,Encrypted=true,DeleteOnTermination=false}' \
+            --user-data file://userdata.rendered.sh \
+            --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=$APP},{Key=app,Value=$APP}]" \
+                                 "ResourceType=volume,Tags=[{Key=Name,Value=$APP-root},{Key=app,Value=$APP},{Key=backup,Value=daily}]" \
+            --query 'Instances[0].InstanceId' --output text)
+          allocation=$(aws ec2 allocate-address --domain vpc \
+            --tag-specifications "ResourceType=elastic-ip,Tags=[{Key=Name,Value=$APP},{Key=app,Value=$APP}]" \
+            --query AllocationId --output text)
+          aws ec2 wait instance-running --instance-ids "$instance"
+          aws ec2 associate-address --instance-id "$instance" --allocation-id "$allocation" >/dev/null
+          origin=$(aws ec2 describe-instances --instance-ids "$instance" \
+            --query 'Reservations[0].Instances[0].PublicDnsName' --output text)
+          echo "ORIGIN=$origin" >> "$GITHUB_ENV"
+
+      - name: Create CloudFront distribution
+        if: env.ACTION == 'up'
+        run: |
+          # Managed policies: CachingDisabled and AllViewerExceptHostHeader.
+          jq -n --arg ref "$APP-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" --arg comment "$COMMENT" \
+                --arg origin "$ORIGIN" --arg id "$APP-ec2" '{
+            CallerReference: $ref, Comment: $comment, Enabled: true,
+            PriceClass: "PriceClass_100", HttpVersion: "http2and3", IsIPV6Enabled: true,
+            Origins: {Quantity: 1, Items: [{Id: $id, DomainName: $origin, CustomOriginConfig: {
+              HTTPPort: 8080, HTTPSPort: 443, OriginProtocolPolicy: "http-only",
+              OriginSslProtocols: {Quantity: 1, Items: ["TLSv1.2"]},
+              OriginReadTimeout: 60, OriginKeepaliveTimeout: 60}}]},
+            DefaultCacheBehavior: {
+              TargetOriginId: $id, ViewerProtocolPolicy: "redirect-to-https", Compress: true,
+              AllowedMethods: {Quantity: 7, Items: ["GET","HEAD","OPTIONS","PUT","POST","PATCH","DELETE"],
+                CachedMethods: {Quantity: 2, Items: ["GET","HEAD"]}},
+              CachePolicyId: "4135ea2d-6df8-44a3-9df3-4b5a84be39ad",
+              OriginRequestPolicyId: "b689b0a8-53d0-40ab-baf2-68738e2966ac"}
+          }' > cloudfront.json
+          read -r id domain < <(aws cloudfront create-distribution --distribution-config file://cloudfront.json \
+            --query 'Distribution.[Id,DomainName]' --output text)
+          aws cloudfront wait distribution-deployed --id "$id"
+          code=000
+          for _ in $(seq 1 40); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "https://$domain/api/defaults" || true)
+            [ "$code" = 200 ] && break
+            sleep 10
+          done
+          if [ "$code" != 200 ]; then
+            echo "::error::https://$domain/api/defaults returned $code"; exit 1
+          fi
+          echo "Site URL: https://$domain"
+          echo "### Up: https://$domain" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Ship code to server
+        if: env.ACTION == 'redeploy' && steps.target.outputs.skip != 'true'
+        run: |
+          instance=$(aws ec2 describe-instances \
+            --filters "Name=tag:app,Values=$APP" Name=instance-state-name,Values=running \
+            --query 'Reservations[0].Instances[0].InstanceId' --output text)
+          if [ "$instance" = None ]; then
+            echo "::error::No running server. Run the workflow with action up."; exit 1
+          fi
+          if [ -n "$GOOGLE_CLIENT_ID" ]; then
+            write_env="echo GOOGLE_CLIENT_ID=$GOOGLE_CLIENT_ID > /etc/tank-tactics.env"
+          else
+            write_env=": > /etc/tank-tactics.env"
+          fi
+          params=$(jq -n --arg env "$write_env" '{commands: [$env,
+            "/usr/local/bin/tank-tactics-deploy", "sleep 3", "systemctl is-active tank-tactics"]}')
+          command=$(aws ssm send-command --instance-ids "$instance" --document-name AWS-RunShellScript \
+            --parameters "$params" --query Command.CommandId --output text)
+          aws ssm wait command-executed --command-id "$command" --instance-id "$instance" || true
+          status=$(aws ssm get-command-invocation --command-id "$command" --instance-id "$instance" \
+            --query Status --output text)
+          aws ssm get-command-invocation --command-id "$command" --instance-id "$instance" \
+            --query StandardErrorContent --output text | tail -n 20
+          if [ "$status" != Success ]; then
+            echo "::error::Deploy command finished with status $status"; exit 1
+          fi
+          echo "### Redeployed $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
+          # Also print the site URL to the log (the summary isn't readable through the API).
+          domains=$(aws cloudfront list-distributions \
+            --query "DistributionList.Items[?Comment=='$COMMENT' && Enabled].DomainName" --output text)
+          for d in $domains; do
+            [ "$d" = None ] && continue
+            echo "Site URL: https://$d"
+            echo "### Site: https://$d" >> "$GITHUB_STEP_SUMMARY"
+          done
+
+      - name: Delete deployment
+        if: env.ACTION == 'down'
+        run: |
+          ids=$(aws cloudfront list-distributions \
+            --query "DistributionList.Items[?Comment=='$COMMENT'].Id" --output text)
+          [ "$ids" = None ] && ids=""
+          for id in $ids; do
+            aws cloudfront get-distribution-config --id "$id" --output json > dist.json
+            if [ "$(jq -r .DistributionConfig.Enabled dist.json)" = true ]; then
+              jq .DistributionConfig.Enabled=false dist.json | jq .DistributionConfig > dist-off.json
+              aws cloudfront update-distribution --id "$id" --if-match "$(jq -r .ETag dist.json)" \
+                --distribution-config file://dist-off.json >/dev/null
+            fi
+          done
+
+          instances=$(aws ec2 describe-instances \
+            --filters "Name=tag:app,Values=$APP" Name=instance-state-name,Values=pending,running,stopping,stopped \
+            --query 'Reservations[].Instances[].InstanceId' --output text)
+          if [ -n "$instances" ]; then
+            # shellcheck disable=SC2086
+            aws ec2 terminate-instances --instance-ids $instances >/dev/null
+            # shellcheck disable=SC2086
+            aws ec2 wait instance-terminated --instance-ids $instances
+          fi
+          for a in $(aws ec2 describe-addresses --filters "Name=tag:app,Values=$APP" \
+              --query 'Addresses[].AllocationId' --output text); do
+            aws ec2 release-address --allocation-id "$a"
+          done
+          for v in $(aws ec2 describe-volumes --filters "Name=tag:app,Values=$APP" Name=status,Values=available \
+              --query 'Volumes[].VolumeId' --output text); do
+            aws ec2 delete-volume --volume-id "$v"
+          done
+          for s in $(aws ec2 describe-security-groups --filters "Name=tag:app,Values=$APP" \
+              --query 'SecurityGroups[].GroupId' --output text); do
+            aws ec2 delete-security-group --group-id "$s" >/dev/null
+          done
+          for s in $(aws ec2 describe-snapshots --owner-ids self --filters "Name=tag:app,Values=$APP" \
+              --query 'Snapshots[].SnapshotId' --output text); do
+            aws ec2 delete-snapshot --snapshot-id "$s"
+          done
+          aws s3 rm "s3://$BUCKET/app.tar.gz" --only-show-errors
+
+          for id in $ids; do
+            aws cloudfront wait distribution-deployed --id "$id"
+            etag=$(aws cloudfront get-distribution --id "$id" --query ETag --output text)
+            aws cloudfront delete-distribution --id "$id" --if-match "$etag"
+          done
+          echo "### Down" >> "$GITHUB_STEP_SUMMARY"

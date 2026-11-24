@@ -18,7 +18,7 @@ from collections import OrderedDict, defaultdict
 from typing import Any, Callable
 
 from . import game
-from .config import ConfigError, GameConfig, ServerConfig
+from .config import ConfigError, DebugConfig, GameConfig, ServerConfig, is_valid_unicode
 from .store import Message, Store, User, hash_token
 
 
@@ -149,10 +149,12 @@ class GameService:
             self._archive[state.id] = (state, msgs)
             self._remember(state.id)
 
-    def authenticate(self, game_id: str, token: str | None) -> str:
-        """Return the player id for ``token`` in ``game_id``."""
+    def authenticate(self, game_id: str, token: Any) -> str:
+        """Return the player id for ``token`` (untrusted, any JSON value) in ``game_id``."""
         if not token:
             raise ServiceError("unauthorized", "Missing player token.", 401)
+        if not isinstance(token, str) or not is_valid_unicode(token):
+            raise ServiceError("unauthorized", "Invalid player token for this game.", 401)
         hit = self.tokens.get(hash_token(token))
         if hit is None or hit[0] != game_id:
             raise ServiceError("unauthorized", "Invalid player token for this game.", 401)
@@ -187,10 +189,17 @@ class GameService:
 
     # -- lobby ------------------------------------------------------------------
 
+    def _check_debug(self, before: DebugConfig, after: DebugConfig) -> None:
+        """Without ``allow_debug``, debug options can't be changed except back to the defaults.
+        Games that already have them keep them, so a config change can't break a running game."""
+        if not self.cfg.allow_debug and after != before and after != DebugConfig():
+            raise ConfigError("Debug options are disabled on this server.")
+
     def create_game(self, host_name: Any, config: Any = None, user_id: str | None = None) -> dict[str, str]:
         """``user_id``: the signed-in account to link the host's seat to, if any."""
         try:
             cfg = GameConfig.parse(config)
+            self._check_debug(DebugConfig(), cfg.debug)
         except ConfigError as e:
             raise ServiceError("invalid_config", str(e)) from None
         with self._global:
@@ -231,7 +240,13 @@ class GameService:
                 "max_players": s.config.players.maximum}
 
     def update_config(self, game_id: str, player_id: str, patch: Any) -> None:
-        self._mutate(game_id, lambda s: game.update_config(s, player_id, patch, self.clock()))
+        def apply(s: game.GameState) -> list[game.LogEntry]:
+            before = s.config.debug
+            entries = game.update_config(s, player_id, patch, self.clock())
+            self._check_debug(before, s.config.debug)  # raising discards _mutate's working copy
+            return entries
+
+        self._mutate(game_id, apply)
 
     def start_game(self, game_id: str, player_id: str) -> None:
         self._mutate(game_id, lambda s: game.start_game(s, player_id, self.clock(), self.rng))
@@ -394,4 +409,5 @@ class GameService:
         v = game.view_for(s, viewer_id)
         v["messages"] = self.visible_messages(game_id, viewer_id)
         v["server_now"] = self.clock()
+        v["allow_debug"] = self.cfg.allow_debug
         return v
