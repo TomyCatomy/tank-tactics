@@ -45,7 +45,6 @@ env:
   ACTION: ${{ inputs.action || 'redeploy' }} # inputs are empty on push
   INSTANCE_TYPE: ${{ inputs.instance_type }}
   CONFIRM: ${{ inputs.confirm }}
-  GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
 
 jobs:
   deploy:
@@ -63,9 +62,6 @@ jobs:
           fi
           if [ "$ACTION" = down ] && [ "$CONFIRM" != DELETE ]; then
             echo "::error::down deletes all game data. Type DELETE in the confirm box."; exit 1
-          fi
-          if ! [[ "$GOOGLE_CLIENT_ID" =~ ^[A-Za-z0-9._-]*$ ]]; then
-            echo "::error::The GOOGLE_CLIENT_ID variable contains invalid characters."; exit 1
           fi
 
       - uses: actions/checkout@v4
@@ -131,8 +127,9 @@ jobs:
               >/dev/null
           fi
 
+          fetch_config=$(base64 -w0 deploy/aws/fetch-config.sh)
           sed -e "s/__BUCKET__/$BUCKET/g" -e "s/__REGION__/$AWS_REGION/g" \
-              -e "s/__GOOGLE_CLIENT_ID__/$GOOGLE_CLIENT_ID/g" deploy/aws/userdata.sh > userdata.rendered.sh
+              -e "s|__FETCH_CONFIG_B64__|$fetch_config|g" deploy/aws/userdata.sh > userdata.rendered.sh
           instance=$(aws ec2 run-instances --image-id "$ami" --instance-type "$INSTANCE_TYPE" --subnet-id "$subnet" \
             --security-group-ids "$sg" --iam-instance-profile "Name=$INSTANCE_PROFILE" \
             --credit-specification CpuCredits=standard \
@@ -182,6 +179,10 @@ jobs:
           if [ "$code" != 200 ]; then
             echo "::error::https://$domain/api/defaults returned $code"; exit 1
           fi
+          if ! curl -fsS "https://$domain/api/auth/config" | jq -e '.google_client_id | length > 0' >/dev/null; then
+            echo "::error::Google sign-in is off on https://$domain. Check the /tank-tactics/google-client-id parameter."
+            exit 1
+          fi
           echo "Site URL: https://$domain"
           echo "### Up: https://$domain" >> "$GITHUB_STEP_SUMMARY"
 
@@ -194,18 +195,22 @@ jobs:
           if [ "$instance" = None ]; then
             echo "::error::No running server. Run the workflow with action up."; exit 1
           fi
-          if [ -n "$GOOGLE_CLIENT_ID" ]; then
-            write_env="echo GOOGLE_CLIENT_ID=$GOOGLE_CLIENT_ID > /etc/tank-tactics.env"
-          else
-            write_env=": > /etc/tank-tactics.env"
-          fi
-          params=$(jq -n --arg env "$write_env" '{commands: [$env,
-            "/usr/local/bin/tank-tactics-deploy", "sleep 3", "systemctl is-active tank-tactics"]}')
+          # Refresh the config script (servers created before it existed lack it), then pull
+          # settings from SSM Parameter Store. If that fails, the command stops before the
+          # restart and the old version keeps running. The last command fails the deploy
+          # unless the restarted server reports Google sign-in as on.
+          install_config="echo $(base64 -w0 deploy/aws/fetch-config.sh) | base64 -d > /usr/local/bin/tank-tactics-config"
+          check_sign_in='for i in $(seq 1 20); do curl -fsS http://127.0.0.1:8080/api/auth/config | grep -q "\"google_client_id\":\"[^\"]" && exit 0; sleep 1; done; echo "Google sign-in is off after restart" >&2; exit 1'
+          params=$(jq -n --arg install "$install_config" --arg check "$check_sign_in" '{commands: [
+            "set -e", $install, "chmod 755 /usr/local/bin/tank-tactics-config", "/usr/local/bin/tank-tactics-config",
+            "/usr/local/bin/tank-tactics-deploy", "sleep 3", "systemctl is-active tank-tactics", $check]}')
           command=$(aws ssm send-command --instance-ids "$instance" --document-name AWS-RunShellScript \
             --parameters "$params" --query Command.CommandId --output text)
           aws ssm wait command-executed --command-id "$command" --instance-id "$instance" || true
           status=$(aws ssm get-command-invocation --command-id "$command" --instance-id "$instance" \
             --query Status --output text)
+          aws ssm get-command-invocation --command-id "$command" --instance-id "$instance" \
+            --query StandardOutputContent --output text | grep '^Google sign-in:' || true
           aws ssm get-command-invocation --command-id "$command" --instance-id "$instance" \
             --query StandardErrorContent --output text | tail -n 20
           if [ "$status" != Success ]; then

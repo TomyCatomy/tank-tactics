@@ -18,7 +18,7 @@ from websockets.exceptions import InvalidState
 
 from tank_tactics.api import create_app
 
-from ..support import make_service
+from ..support import FAKE_GOOGLE_CLIENT_ID, fake_google_verifier, make_service
 
 _HERE = Path(__file__).parent
 
@@ -32,8 +32,9 @@ def pytest_collection_modifyitems(items):
 class LiveServer:
     """Runs the app on a fixed port in a background thread; can be stopped and restarted."""
 
-    def __init__(self, service):
+    def __init__(self, service, google_verifier=None):
         self.service = service
+        self.google_verifier = google_verifier
         with socket.socket() as s:
             s.bind(("127.0.0.1", 0))
             self.port = s.getsockname()[1]
@@ -47,7 +48,7 @@ class LiveServer:
 
     def start(self) -> None:
         # A fresh app each time, like a real restart (new event loop, new Hub).
-        config = uvicorn.Config(create_app(self.service), host="127.0.0.1", port=self.port,
+        config = uvicorn.Config(create_app(self.service, self.google_verifier), host="127.0.0.1", port=self.port,
                                 log_level="warning", timeout_graceful_shutdown=1)
         self._server = uvicorn.Server(config)
         self._thread = threading.Thread(target=self._run, args=(self._server,), daemon=True)
@@ -80,6 +81,18 @@ def server():
     """A running LiveServer over an in-memory service; ``server.stop()/start()`` simulates an outage."""
     svc, _ = make_service(action_rate_per_second=100)
     srv = LiveServer(svc)
+    srv.start()
+    yield srv
+    if srv.running:
+        srv.stop()
+
+
+@pytest.fixture
+def auth_server():
+    """A LiveServer with Google sign-in on, using the fake verifier from ``tests/support.py``
+    (pair it with ``fake_google(page)`` so the browser gets a fake Google button)."""
+    svc, _ = make_service(action_rate_per_second=100, google_client_id=FAKE_GOOGLE_CLIENT_ID)
+    srv = LiveServer(svc, fake_google_verifier)
     srv.start()
     yield srv
     if srv.running:

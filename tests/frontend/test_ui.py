@@ -267,6 +267,94 @@ def test_config_dropdowns_show_full_option_text(server, page, viewport):
     assert page.evaluate(_CLIPPED_SELECTS) == [], "lobby settings"
 
 
+# -- Google sign-in --------------------------------------------------------------------------
+
+# Replaces Google's script: renders a button that "signs in" as whoever window.fakeGoogleUser
+# names, with a credential the server's fake verifier accepts.
+FAKE_GSI = """
+window.google = { accounts: { id: {
+  initialize(cfg) { window.__gsiCallback = cfg.callback; },
+  renderButton(el) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'fake-gsi'; b.textContent = 'Sign in with Google';
+    b.onclick = () => { const u = window.fakeGoogleUser || {sub: 'sub-ann', name: 'Ann'};
+                        window.__gsiCallback({ credential: `good:${u.sub}:${u.name}` }); };
+    el.append(b);
+  },
+  disableAutoSelect() {},
+} } };
+"""
+
+
+def fake_google(page, user=("sub-ann", "Ann")) -> None:
+    page.route("https://accounts.google.com/gsi/client",
+               lambda route: route.fulfill(status=200, content_type="text/javascript", body=FAKE_GSI))
+    page.add_init_script(f"window.fakeGoogleUser = {{sub: {user[0]!r}, name: {user[1]!r}}};")
+
+
+def test_no_sign_in_without_a_google_client_id(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("text=Create a game")
+    assert page.locator(".account").count() == 0
+
+
+def test_signed_in_games_follow_you_to_another_device(auth_server, browser):
+    # Device 1: sign in and create a game.
+    ctx1 = browser.new_context()
+    page = ctx1.new_page()
+    fake_google(page)
+    page.goto(auth_server.url)
+    page.click(".fake-gsi")
+    page.wait_for_selector("text=Signed in as")
+    assert page.locator(".home input[autocomplete=nickname]").input_value() == "Ann"  # name prefilled
+    page.click("text=Create game")
+    page.wait_for_selector(".game-code")
+    gid = page.locator(".game-code-id").inner_text().strip()
+    ctx1.close()
+
+    # Device 2: nothing saved locally; signing in lists the game and opens it as Ann.
+    ctx2 = browser.new_context()
+    page = ctx2.new_page()
+    fake_google(page)
+    page.goto(auth_server.url)
+    page.wait_for_selector(".fake-gsi")
+    assert gid not in visible_text(page, "#app")
+    page.click(".fake-gsi")
+    page.wait_for_selector(f".plist li:has-text('{gid}')")
+    page.click(f".plist li:has-text('{gid}')")
+    page.wait_for_selector(".game-code")
+    st = auth_server.service.view(gid, None)
+    assert [p["name"] for p in st["players"]] == ["Ann"]  # reopened the seat, didn't join again
+
+    # Signing out keeps the seat saved on this device.
+    page.goto(auth_server.url)
+    page.click("text=Sign out")
+    page.wait_for_selector(".fake-gsi")
+    assert gid in visible_text(page, "#app")
+    ctx2.close()
+
+
+def test_invite_link_opens_your_existing_seat_when_signed_in(auth_server, browser):
+    ctx = browser.new_context()
+    page = ctx.new_page()
+    fake_google(page, ("sub-bob", "Bob"))
+    page.goto(auth_server.url)
+    page.click(".fake-gsi")
+    page.wait_for_selector("text=Signed in as")
+    host = create_game(auth_server, players=("Host",))[0]
+    page.goto(f"{auth_server.url}/#/join/{host['game_id']}")
+    page.click("text=Join game")
+    page.wait_for_selector(".game-code")
+    # Forget the device's seat, then follow the invite link again: no second seat.
+    page.evaluate("localStorage.removeItem('tt.games')")
+    page.goto(f"{auth_server.url}/#/")
+    page.goto(f"{auth_server.url}/#/join/{host['game_id']}")
+    page.wait_for_selector(".game-code")
+    names = [p["name"] for p in auth_server.service.view(host["game_id"], None)["players"]]
+    assert names == ["Host", "Bob"]
+    ctx.close()
+
+
 PHONES = [(320, 568), (360, 640), (390, 664), (430, 740), (667, 375), (932, 430)]
 _PHONE_IDS = [f"{w}x{h}" for w, h in PHONES]
 
@@ -332,6 +420,27 @@ def test_phone_home_needs_no_page_scroll(server, browser, width, height):
         page.get_by_placeholder("Your display name").fill("Ann")
         page.get_by_role("button", name="Create game").click()
         page.wait_for_selector(".game-code")
+    finally:
+        page.context.close()
+
+
+@pytest.mark.parametrize("signed_in", [False, True], ids=["signed-out", "signed-in"])
+@pytest.mark.parametrize(("width", "height"), PHONES, ids=_PHONE_IDS)
+def test_phone_home_with_google_sign_in_needs_no_page_scroll(auth_server, browser, width, height, signed_in):
+    # The deployed server always has sign-in on, which adds the account card to the home page.
+    page = phone_page(browser, width, height)
+    try:
+        fake_google(page)
+        page.goto(auth_server.url)
+        page.wait_for_selector(".fake-gsi")
+        if signed_in:
+            page.click(".fake-gsi")
+            page.wait_for_selector("text=Signed in as")
+        size = page.evaluate("({h: document.documentElement.scrollHeight, w: document.documentElement.scrollWidth})")
+        assert size == {"h": height, "w": width}
+        for target in (page.get_by_placeholder("Game code, e.g. k7mq2x"), page.get_by_role("button", name="Create game")):
+            box = target.bounding_box()
+            assert box["y"] >= 0 and box["y"] + box["height"] <= height
     finally:
         page.context.close()
 
