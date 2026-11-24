@@ -119,6 +119,15 @@ def test_rules_modal_survives_state_push_and_fits_phone(server, page):
     assert box["x"] >= 0 and box["x"] + box["width"] <= 320 and box["y"] + box["height"] <= 568
 
 
+def test_phone_short_page_does_not_scroll(server, page):
+    host, _ = create_game(server)
+    page.set_viewport_size({"width": 390, "height": 844})
+    page.route_web_socket("**/ws**", lambda ws: None)  # never connects: stays on the short "Connecting..." screen
+    page.goto(f"{server.url}/#/g/{host['game_id']}?t={host['token']}")
+    page.wait_for_selector(".spinner")
+    assert page.evaluate("document.documentElement.scrollHeight <= window.innerHeight")
+
+
 def test_lobby_text_follows_minimum_players(server, page):
     host, _ = create_game(server, config={"players": {"minimum": 4}})
     open_as(page, server, host)
@@ -251,9 +260,89 @@ def test_config_dropdowns_show_full_option_text(server, page, viewport):
 
     host, _ = create_game(server)  # the same form in the lobby's (narrower) settings card
     open_as(page, server, host)
+    if viewport["width"] < 900:
+        page.get_by_role("tab", name="Settings").click()  # phones show the lobby one tab at a time
     page.wait_for_selector("text=Game settings")
     page.locator("details.adv summary").first.click()
     assert page.evaluate(_CLIPPED_SELECTS) == [], "lobby settings"
+
+
+PHONES = [(320, 568), (360, 640), (390, 664), (430, 740), (667, 375), (932, 430)]
+_PHONE_IDS = [f"{w}x{h}" for w, h in PHONES]
+
+
+def phone_page(browser, width, height):
+    return browser.new_context(viewport={"width": width, "height": height}, is_mobile=True, has_touch=True).new_page()
+
+
+@pytest.mark.parametrize(("width", "height"), PHONES, ids=_PHONE_IDS)
+def test_rules_modal_takes_most_of_phone_screen(server, browser, width, height):
+    page = phone_page(browser, width, height)
+    try:
+        page.goto(server.url)
+        page.locator("#rules-open").click()
+        box = page.locator("#rules-modal").bounding_box()
+        assert (box["x"], box["width"]) == (6, width - 12)
+        assert abs(box["height"] - 0.7 * height) <= 1 and abs(box["y"] - 0.15 * height) <= 1  # 70% tall, centred
+        body = page.locator("#rules-body")
+        assert body.evaluate("el => el.scrollWidth <= el.clientWidth")
+        body.evaluate("el => { el.scrollTop = el.scrollHeight; }")
+        last = page.locator("#rules-body > p").last.bounding_box()
+        assert last["y"] + last["height"] <= height  # the last line can be scrolled fully into view
+        page.locator("#rules-close").click()
+        assert not page.locator("#rules-modal").is_visible()
+    finally:
+        page.context.close()
+
+
+@pytest.mark.parametrize("role", ["host", "guest"])
+@pytest.mark.parametrize(("width", "height"), PHONES, ids=_PHONE_IDS)
+def test_phone_lobby_needs_no_page_scroll(server, browser, width, height, role):
+    host, bob = create_game(server)
+    page = phone_page(browser, width, height)
+    try:
+        open_as(page, server, host if role == "host" else bob)
+        page.wait_for_selector(".lobby-overview.active")
+        for tab in ("Players", "Chat", "Settings", "Lobby"):
+            page.get_by_role("tab", name=tab).click()
+            size = page.evaluate("({h: document.documentElement.scrollHeight, w: document.documentElement.scrollWidth})")
+            assert size == {"h": height, "w": width}, tab
+        overview = page.locator(".lobby-overview")
+        assert overview.evaluate("el => el.scrollHeight <= el.clientHeight"), "the first tab must fit without scrolling"
+        action = page.get_by_role("button", name="Start game" if role == "host" else "Leave lobby")
+        box = action.bounding_box()
+        assert box["y"] + box["height"] <= height
+    finally:
+        page.context.close()
+
+
+def test_phone_lobby_chat_tab_counts_unread(server, browser):
+    host, bob = create_game(server)
+    page = phone_page(browser, 390, 664)
+    try:
+        open_as(page, server, host)
+        page.wait_for_selector(".lobby-overview.active")
+        with httpx.Client(base_url=server.url) as c:
+            assert c.post(f"/api/games/{host['game_id']}/chat", json={"to_id": None, "text": "hello"},
+                          headers={"Authorization": f"Bearer {bob['token']}"}).status_code == 201
+        badge = page.locator(".lobby-tabs .count")
+        badge.wait_for()
+        assert badge.inner_text() == "1"
+        page.get_by_role("tab", name="Chat").click()
+        assert page.locator(".chat-msgs", has_text="hello").is_visible()
+        assert badge.count() == 0
+    finally:
+        page.context.close()
+
+
+def test_desktop_lobby_shows_all_panels_without_tabs(server, page):
+    host, _ = create_game(server)
+    page.set_viewport_size({"width": 1280, "height": 900})
+    open_as(page, server, host)
+    page.wait_for_selector("text=Game settings")
+    assert not page.locator(".lobby-tabs").is_visible()
+    for panel in (".lobby-overview", ".lobby-players", ".lobby-chat", ".lobby-settings"):
+        assert page.locator(panel).is_visible(), panel
 
 
 def test_debug_options_hidden_when_not_allowed(server_without_debug, page):
