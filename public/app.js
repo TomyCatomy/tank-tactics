@@ -365,7 +365,7 @@
     const err = h('div', { class: 'error-text' });
     const createBtn = h('button', { class: 'primary', type: 'submit' }, 'Create game');
     const create = h('form', {
-      class: 'card stack home-create',
+      class: 'card home-create',
       onsubmit: async (ev) => {
         ev.preventDefault();
         err.textContent = '';
@@ -377,10 +377,12 @@
         } catch (e) { err.textContent = e.message; } finally { createBtn.disabled = false; }
       },
     },
-      h('h2', {}, 'Create a game'),
-      h('p', { class: 'notice' }, 'This game can get personal. Play with people who’ll still be your friends afterwards.'),
-      h('label', {}, h('span', { class: 'muted small' }, 'Your name'), nameIn),
-      form, h('div', { class: 'home-create-actions' }, err, createBtn));
+      // Folded by default: most visitors come to join or reopen a game, and the form is long.
+      h('details', { class: 'stack create-fold' },
+        h('summary', {}, h('h2', {}, 'Create a game')),
+        h('p', { class: 'notice' }, 'This game can get personal. Play with people who’ll still be your friends afterwards.'),
+        h('label', {}, h('span', { class: 'muted small' }, 'Your name'), nameIn),
+        form, h('div', { class: 'home-create-actions' }, err, createBtn)));
 
     const codeIn = h('input', { placeholder: 'Game code, e.g. k7mq2x', autocapitalize: 'off', autocomplete: 'off' });
     const join = h('form', {

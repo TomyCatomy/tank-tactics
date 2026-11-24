@@ -254,7 +254,7 @@ _CLIPPED_SELECTS = """() => {
 def test_config_dropdowns_show_full_option_text(server, page, viewport):
     page.set_viewport_size(viewport)
     page.goto(server.url)
-    page.wait_for_selector("text=Create a game")
+    open_create_form(page)
     page.locator("details.adv summary").first.click()  # reveal the advanced settings too
     assert page.evaluate(_CLIPPED_SELECTS) == [], "create form"
 
@@ -325,6 +325,7 @@ def test_signed_in_games_follow_you_to_another_device(auth_server, browser):
     page.click(".fake-gsi")
     page.wait_for_selector("text=Signed in as")
     assert page.locator(".home input[autocomplete=nickname]").input_value() == "Ann"  # name prefilled
+    open_create_form(page)
     page.click("text=Create game")
     page.wait_for_selector(".game-code")
     gid = page.locator(".game-code-id").inner_text().strip()
@@ -428,7 +429,7 @@ def test_phone_home_scrolls_to_every_control(server, browser, width, height):
     page = phone_page(browser, width, height)
     try:
         page.goto(server.url)
-        page.wait_for_selector(".home-create")
+        open_create_form(page)
         assert page.evaluate("document.documentElement.scrollWidth") == width
         assert page.evaluate("getComputedStyle(document.documentElement).overflowY") != "hidden"
         summary = page.locator("details.adv summary").first
@@ -457,6 +458,7 @@ def test_phone_home_with_google_sign_in_reaches_every_control(auth_server, brows
         if signed_in:
             page.click(".fake-gsi")
             page.wait_for_selector("text=Signed in as")
+        open_create_form(page)
         assert page.evaluate("document.documentElement.scrollWidth") == width
         for target in (page.get_by_placeholder("Game code, e.g. k7mq2x"), page.locator("details.adv summary").first,
                        page.get_by_role("button", name="Create game")):
@@ -496,10 +498,26 @@ def test_desktop_lobby_shows_all_panels_without_tabs(server, page):
         assert page.locator(panel).is_visible(), panel
 
 
+def open_create_form(page):
+    page.locator(".create-fold > summary").click()
+    page.get_by_role("button", name="Create game").wait_for()
+
+
+def test_create_form_is_folded_until_opened(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("text=Create a game")
+    assert not page.get_by_role("button", name="Create game").is_visible()
+    assert not page.get_by_placeholder("Your display name").is_visible()
+    open_create_form(page)
+    assert page.get_by_placeholder("Your display name").is_visible()
+    page.locator(".create-fold > summary").click()  # and folds back up
+    assert not page.get_by_role("button", name="Create game").is_visible()
+
+
 def test_debug_options_hidden_when_not_allowed(server_without_debug, page):
     server = server_without_debug
     page.goto(server.url)
-    page.wait_for_selector("text=Create a game")
+    open_create_form(page)
     assert "Debug" not in visible_text(page, "#app")
     page.fill("input[placeholder='Your display name']", "Host")
     page.click("button:has-text('Create game')")  # the hidden fields must not break creation
@@ -509,6 +527,7 @@ def test_debug_options_hidden_when_not_allowed(server_without_debug, page):
 
 def test_debug_options_shown_when_allowed(server, page):
     page.goto(server.url)
+    open_create_form(page)
     page.wait_for_selector("text=Debug: fast ticks")
 
 

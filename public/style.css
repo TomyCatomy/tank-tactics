@@ -115,6 +115,15 @@ label { display: block; }
 /* Home */
 .home { display: grid; gap: 16px; grid-template-columns: 1fr; max-width: 720px; margin: 0 auto; }
 .home-create-actions > * + * { margin-top: 12px; }
+.create-fold > summary { cursor: pointer; min-height: var(--tap); display: flex; align-items: center; gap: 10px; list-style: none; }
+.create-fold > summary::-webkit-details-marker { display: none; }
+.create-fold > summary::before {
+  content: ''; display: inline-block; width: 8px; height: 8px; margin: 0 4px 0 2px;
+  border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted);
+  transform: rotate(-45deg); transition: transform .15s;
+}
+.create-fold[open] > summary::before { transform: rotate(45deg); }
+.create-fold > summary h2 { margin: 0; }
 .home-create-actions > .error-text:empty { display: none; }
 /* Phones: tighter spacing so more fits, but the page scrolls normally. Don't lock it to the screen height:
    the create form is longer than many screens, and iOS can't scroll a locked page. */
