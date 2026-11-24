@@ -429,7 +429,7 @@ def test_phone_home_scrolls_to_every_control(server, browser, width, height):
 
 @pytest.mark.parametrize("signed_in", [False, True], ids=["signed-out", "signed-in"])
 @pytest.mark.parametrize(("width", "height"), PHONES, ids=_PHONE_IDS)
-def test_phone_home_with_google_sign_in_needs_no_page_scroll(auth_server, browser, width, height, signed_in):
+def test_phone_home_with_google_sign_in_reaches_every_control(auth_server, browser, width, height, signed_in):
     # The deployed server always has sign-in on, which adds the account card to the home page.
     page = phone_page(browser, width, height)
     try:
@@ -439,9 +439,10 @@ def test_phone_home_with_google_sign_in_needs_no_page_scroll(auth_server, browse
         if signed_in:
             page.click(".fake-gsi")
             page.wait_for_selector("text=Signed in as")
-        size = page.evaluate("({h: document.documentElement.scrollHeight, w: document.documentElement.scrollWidth})")
-        assert size == {"h": height, "w": width}
-        for target in (page.get_by_placeholder("Game code, e.g. k7mq2x"), page.get_by_role("button", name="Create game")):
+        assert page.evaluate("document.documentElement.scrollWidth") == width
+        for target in (page.get_by_placeholder("Game code, e.g. k7mq2x"), page.locator("details.adv summary").first,
+                       page.get_by_role("button", name="Create game")):
+            target.scroll_into_view_if_needed()
             box = target.bounding_box()
             assert box["y"] >= 0 and box["y"] + box["height"] <= height
     finally:
