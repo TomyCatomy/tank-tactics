@@ -119,6 +119,19 @@ def test_rules_modal_survives_state_push_and_fits_phone(server, page):
     assert box["x"] >= 0 and box["x"] + box["width"] <= 320 and box["y"] + box["height"] <= 568
 
 
+def test_phone_short_page_does_not_scroll_and_rules_modal_is_tall(server, page):
+    host, _ = create_game(server)
+    page.set_viewport_size({"width": 390, "height": 844})
+    page.route_web_socket("**/ws**", lambda ws: None)  # never connects: stays on the short "Connecting..." screen
+    page.goto(f"{server.url}/#/g/{host['game_id']}?t={host['token']}")
+    page.wait_for_selector(".spinner")
+    assert page.evaluate("document.documentElement.scrollHeight <= window.innerHeight")
+
+    page.locator("#rules-open").click()
+    box = page.locator("#rules-modal").bounding_box()
+    assert 0.65 * 844 <= box["height"] <= 0.75 * 844
+
+
 def test_lobby_text_follows_minimum_players(server, page):
     host, _ = create_game(server, config={"players": {"minimum": 4}})
     open_as(page, server, host)
