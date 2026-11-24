@@ -362,7 +362,7 @@
     const err = h('div', { class: 'error-text' });
     const createBtn = h('button', { class: 'primary', type: 'submit' }, 'Create game');
     const create = h('form', {
-      class: 'card stack',
+      class: 'card stack home-create',
       onsubmit: async (ev) => {
         ev.preventDefault();
         err.textContent = '';
@@ -377,11 +377,11 @@
       h('h2', {}, 'Create a game'),
       h('p', { class: 'notice' }, 'This game can get personal. Play with people who’ll still be your friends afterwards.'),
       h('label', {}, h('span', { class: 'muted small' }, 'Your name'), nameIn),
-      form, err, createBtn);
+      form, h('div', { class: 'home-create-actions' }, err, createBtn));
 
     const codeIn = h('input', { placeholder: 'Game code, e.g. k7mq2x', autocapitalize: 'off', autocomplete: 'off' });
     const join = h('form', {
-      class: 'card stack',
+      class: 'card stack home-join',
       onsubmit: (ev) => {
         ev.preventDefault();
         const code = codeIn.value.trim().replace(/^.*\/join\//, '').replace(/[^a-z0-9]/gi, '').toLowerCase();
@@ -400,7 +400,7 @@
       }
       location.hash = `#/g/${g.gid}`;
     };
-    const myGames = mine.length ? h('div', { class: 'card' }, h('h2', {}, me ? 'Your games' : 'Your games on this device'),
+    const myGames = mine.length ? h('div', { class: 'card home-games' }, h('h2', {}, me ? 'Your games' : 'Your games on this device'),
       h('ul', { class: 'plist' }, mine.map((g) => h('li', { class: 'clickable', onclick: open(g) },
         h('span', { class: 'pname' }, `${g.gid}`, g.name ? h('span', { class: 'muted' }, ` · ${g.name}`) : null,
           g.status ? h('span', { class: 'muted small' }, ` · ${g.status}`) : null),
