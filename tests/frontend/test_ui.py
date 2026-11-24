@@ -424,6 +424,27 @@ def test_phone_home_needs_no_page_scroll(server, browser, width, height):
         page.context.close()
 
 
+@pytest.mark.parametrize("signed_in", [False, True], ids=["signed-out", "signed-in"])
+@pytest.mark.parametrize(("width", "height"), PHONES, ids=_PHONE_IDS)
+def test_phone_home_with_google_sign_in_needs_no_page_scroll(auth_server, browser, width, height, signed_in):
+    # The deployed server always has sign-in on, which adds the account card to the home page.
+    page = phone_page(browser, width, height)
+    try:
+        fake_google(page)
+        page.goto(auth_server.url)
+        page.wait_for_selector(".fake-gsi")
+        if signed_in:
+            page.click(".fake-gsi")
+            page.wait_for_selector("text=Signed in as")
+        size = page.evaluate("({h: document.documentElement.scrollHeight, w: document.documentElement.scrollWidth})")
+        assert size == {"h": height, "w": width}
+        for target in (page.get_by_placeholder("Game code, e.g. k7mq2x"), page.get_by_role("button", name="Create game")):
+            box = target.bounding_box()
+            assert box["y"] >= 0 and box["y"] + box["height"] <= height
+    finally:
+        page.context.close()
+
+
 def test_phone_lobby_chat_tab_counts_unread(server, browser):
     host, bob = create_game(server)
     page = phone_page(browser, 390, 664)
