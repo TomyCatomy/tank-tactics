@@ -165,7 +165,9 @@
           } catch (e) { toast(e.message, 'error'); }
         },
       });
-      google.accounts.id.renderButton(el, { theme: 'outline', size: 'large', text: 'signin_with' });
+      // The standard dark pill, in English like the rest of the site. `medium` matters: at `large`, Google swaps in its
+      // personalized "Sign in as <name>" button whenever the browser has a Google session.
+      google.accounts.id.renderButton(el, { type: 'standard', theme: 'filled_black', shape: 'pill', size: 'medium', text: 'signin_with', locale: 'en' });
     } catch (e) { fill(el, h('span', { class: 'muted small' }, e.message)); }
   }
 
@@ -415,7 +417,7 @@
           h('button', { class: 'shrink', onclick: signOut }, 'Sign out'));
       } else {
         gButton = h('div', { class: 'gsi-button' });
-        accountCard = h('div', { class: 'card stack account' },
+        accountCard = h('div', { class: 'account account-signin' },
           h('p', { class: 'muted small' }, 'Optional: sign in to keep your games across devices.'), gButton);
       }
     }
