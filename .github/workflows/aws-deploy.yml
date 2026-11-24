@@ -182,6 +182,7 @@ jobs:
           if [ "$code" != 200 ]; then
             echo "::error::https://$domain/api/defaults returned $code"; exit 1
           fi
+          echo "Site URL: https://$domain"
           echo "### Up: https://$domain" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Ship code to server
@@ -211,6 +212,14 @@ jobs:
             echo "::error::Deploy command finished with status $status"; exit 1
           fi
           echo "### Redeployed $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
+          # Also print the site URL to the log (the summary isn't readable through the API).
+          domains=$(aws cloudfront list-distributions \
+            --query "DistributionList.Items[?Comment=='$COMMENT' && Enabled].DomainName" --output text)
+          for d in $domains; do
+            [ "$d" = None ] && continue
+            echo "Site URL: https://$d"
+            echo "### Site: https://$d" >> "$GITHUB_STEP_SUMMARY"
+          done
 
       - name: Delete deployment
         if: env.ACTION == 'down'
