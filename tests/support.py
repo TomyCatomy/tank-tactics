@@ -9,6 +9,7 @@ import random
 from typing import Any
 
 from tank_tactics import game
+from tank_tactics.api.google import GoogleIdentity, InvalidGoogleToken
 from tank_tactics.config import GameConfig, ServerConfig
 from tank_tactics.service import GameService
 from tank_tactics.store import Store
@@ -81,3 +82,16 @@ def place(svc: GameService, gid: str, positions: dict[str, tuple[int, int]]) -> 
         pl = game.get_player(s, pid)
         pl.x, pl.y = x, y
     svc.store.save(s)
+
+
+# -- Google sign-in ------------------------------------------------------------------------
+
+FAKE_GOOGLE_CLIENT_ID = "test-client.apps.googleusercontent.com"
+
+
+def fake_google_verifier(credential: str) -> GoogleIdentity:
+    """Stands in for real Google ID-token checks: accepts ``good:<sub>:<name>``."""
+    parts = credential.split(":")
+    if len(parts) != 3 or parts[0] != "good":
+        raise InvalidGoogleToken("bad")
+    return GoogleIdentity(sub=parts[1], name=parts[2])

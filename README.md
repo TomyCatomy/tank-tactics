@@ -83,9 +83,30 @@ is validated on startup.
 | `CHAT_RATE_PER_10S` | `20` | Per-player chat rate limit |
 | `SCHEDULER_MAX_SLEEP` | `5` | Max seconds between scheduler checks |
 | `MAX_MESSAGE_LENGTH` | `1000` | Chat message length limit |
+| `GOOGLE_CLIENT_ID` | unset | OAuth client ID for the optional "Sign in with Google"; unset turns it off |
+| `SESSION_TTL_DAYS` | `30` | How long a sign-in lasts |
+| `LOGIN_RATE_PER_MINUTE` | `10` | Sign-in attempts per client IP per minute |
 
 Put it behind a TLS-terminating reverse proxy (Caddy, nginx) for real use; the client
 switches to `wss://` automatically on HTTPS.
+
+### Sign in with Google (optional)
+
+Accounts are optional: anyone can still play with just a name. Signed-in players get
+their seats linked to their account, so "Your games" follows them to any device.
+
+1. In Google Cloud Console, go to *APIs & Services → Credentials*. Create an *OAuth client
+   ID* of type *Web application*. Basic profile scopes need no verification review.
+2. Under *Authorized JavaScript origins*, add your site's origin, e.g. `https://tanks.example.com`.
+   For local testing add `http://localhost:8080`; Google accepts plain HTTP only for
+   `localhost`, and never bare IP addresses.
+3. Start the server with `GOOGLE_CLIENT_ID=<the client id>`. No client secret is needed:
+   the server only checks the ID token's signature against Google's public keys.
+
+Only Google's stable account id and display name are stored, never the email address.
+The sign-in rate limit is per client IP. uvicorn trusts `X-Forwarded-For` only from
+`127.0.0.1` by default; if your reverse proxy runs on another host, set
+`FORWARDED_ALLOW_IPS` to its address.
 
 ## Configure the rules
 
@@ -168,6 +189,15 @@ All state-changing requests use `Authorization: Bearer <player token>`.
 | `POST /api/games/{id}/vote` | `{candidate_id}` | jurors, jury enabled only |
 | `POST /api/games/{id}/chat` | `{to_id: null\|player_id, text}` | |
 | `WS /ws/{id}` | first message `{type: auth, token}` | pushes `{type: state, state}` on every change |
+| `GET /api/auth/config` | | `{google_client_id}`; `null` when sign-in is off |
+| `POST /api/auth/google` | `{credential}` | Google ID token in, `{token, user}` session out |
+| `POST /api/auth/logout` | | session; ends it (saved seat tokens keep working) |
+| `GET /api/me` · `GET /api/me/games` | | session; your account and your linked seats |
+| `POST /api/me/games/{id}/claim` | | session; a fresh seat token for your seat, for this device |
+
+Account endpoints take `Authorization: Bearer <session token>`. Create and join also
+accept a session token (optional); it links the new seat to the account, with one seat
+per account per game.
 
 Errors come back as `{"error": {"code", "message"}}` with a 4xx status.
 

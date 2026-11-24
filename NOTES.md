@@ -71,5 +71,23 @@ Where the spec left room for interpretation, this is what I chose and why.
 - Email or push notifications. The client shows in-app toasts for all five events in
   4.5 and uses browser notifications when permitted (some mobile browsers need a service
   worker for these). Discord covers public events.
-- Accounts. Identity is a per-player token, delivered through the join flow and a
-  personal rejoin link.
+- Required accounts. Identity is still a per-player token, delivered through the join
+  flow and a personal rejoin link. Google sign-in is an optional layer on top (below).
+
+## Accounts (optional Google sign-in)
+
+19. **Accounts sit above seats, not in place of them.** Each seat keeps its own bearer
+    token, so the game API, the WebSocket protocol, the bots and anonymous play are
+    unchanged. A session token (from `/api/auth/google`) only lists the account's seats,
+    links new seats, and issues extra seat tokens (`/claim`) for another device.
+20. **Claiming adds a token; it doesn't rotate.** The original token and rejoin links
+    keep working, and extra tokens are stored in `seat_tokens`, deleted with the player.
+21. **One seat per account per game**, enforced by a unique index on `(game_id, user_id)`.
+    Joins sent without a session (e.g. debug local seats) are unaffected.
+22. **No email is stored**, only Google's `sub` and the profile name, which pre-fills
+    the name box. Player names in games are still chosen per game, and the account never
+    appears in game views.
+23. **Expired session on create/join is a 401**, not a silent anonymous join, so a player
+    never ends up with an unlinked seat they think is linked.
+24. **Schema upgrade:** `create_all` adds the new tables, and `store._migrate` adds
+    `players.user_id` to databases from before accounts.
