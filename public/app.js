@@ -323,6 +323,7 @@
     closeSheet();
     $('#topbar-info').replaceChildren();
     $('#topbar-game').replaceChildren();
+    window.scrollTo(0, 0); // a new page starts at the top, not wherever the last one was scrolled to
     const raw = location.hash.slice(1) || '/';
     const [path, query] = raw.split('?');
     const params = new URLSearchParams(query || '');

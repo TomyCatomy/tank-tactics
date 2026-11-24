@@ -116,23 +116,15 @@ label { display: block; }
 .home { display: grid; gap: 16px; grid-template-columns: 1fr; max-width: 720px; margin: 0 auto; }
 .home-create-actions > * + * { margin-top: 12px; }
 .home-create-actions > .error-text:empty { display: none; }
-/* Phones: the home page fills the screen exactly; only the "Create a game" card scrolls, with its button
-   pinned to the card's bottom. Same query as the phone lobby below. */
+/* Phones: tighter spacing so more fits, but the page scrolls normally. Don't lock it to the screen height:
+   the create form is longer than many screens, and iOS can't scroll a locked page. */
 @media (max-width: 899px), (max-height: 500px) {
-  html:has(.home), body:has(.home) { height: 100vh; height: 100dvh; min-height: 0; overflow: hidden; }
-  body:has(.home) { display: flex; flex-direction: column; }
-  body:has(.home) .topbar { position: static; flex: none; }
-  main:has(.home) { flex: 1; min-height: 0; width: 100%; padding: 8px; }
-  .home { display: flex; flex-direction: column; gap: 8px; height: 100%; }
-  .home > * { flex: none; }
+  main:has(.home) { padding: 8px; }
+  .home { gap: 8px; }
   .home .card { padding: 12px; }
   .home .stack > * + * { margin-top: 8px; }
   .home h2 { margin-bottom: 0; }
-  .home .hero h1 { display: none; } /* the top bar already shows the name */
   .home .hero p { margin: 0 4px; font-size: .85rem; color: var(--muted); }
-  .home-games { max-height: 25%; overflow-y: auto; overscroll-behavior: contain; }
-  .home-create { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
-  .home-create-actions { position: sticky; bottom: -12px; z-index: 1; margin-bottom: -12px; padding: 8px 0 12px; background: var(--panel); }
   .home-create-actions > * + * { margin-top: 8px; }
 }
 /* Short landscape screens: drop the tagline to leave room for the form. */
@@ -285,19 +277,20 @@ html:has(.rules-modal[open]) { overflow: hidden; }
 .lobby-players > :empty + * { margin-top: 0; }
 /* Phones: the lobby fills the screen and shows one tab at a time. Keep this query in sync with `phoneLobby` in app.js. */
 @media (max-width: 899px), (max-height: 500px) {
-  html:has(.lobby), body:has(.lobby) { height: 100vh; height: 100dvh; min-height: 0; overflow: hidden; }
-  body:has(.lobby) { display: flex; flex-direction: column; }
-  body:has(.lobby) .topbar { position: static; flex: none; min-height: 0; padding: 6px 12px; flex-wrap: nowrap; }
-  body:has(.lobby) .brand { font-size: 0; }
-  body:has(.lobby) .brand::before { content: "▣"; font-size: 18px; }
+  /* Fit the screen, but never clip: if a real phone lays out taller than expected (big system font,
+     browser toolbars), the page scrolls instead of cutting content off. */
+  body:has(.lobby) { display: flex; flex-direction: column; height: 100vh; height: 100dvh; min-height: 0; }
+  body:has(.lobby) .topbar { flex: none; min-height: 0; padding: 6px 12px; flex-wrap: nowrap; }
   body:has(.lobby) .topbar-info { min-width: 0; flex-wrap: nowrap; overflow-x: auto; justify-content: flex-start; scrollbar-width: none; }
   body:has(.lobby) #rules-open { flex: none; }
-  main:has(.lobby) { flex: 1; min-height: 0; width: 100%; padding: 8px; }
+  body:has(.lobby) .topbar { gap: 8px; }
+  /* Only the area under the top bar scrolls (if the lobby is ever taller than the screen), so the bar stays put. */
+  main:has(.lobby) { flex: 1; min-height: 0; width: 100%; padding: 8px; overflow-y: auto; }
   .lobby { display: flex; flex-direction: column; gap: 8px; height: 100%; }
   .lobby-tabs { display: flex; flex: none; border: 1px solid var(--line); border-radius: 8px; }
   .lobby-tabs button { min-width: 0; padding: 0 8px; font-size: .85rem; }
   .lobby-col { display: contents; }
-  .lobby .lobby-panel { display: none; margin: 0; flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+  .lobby .lobby-panel { display: none; margin: 0; flex: 1; min-height: 120px; overflow-y: auto; overscroll-behavior: contain; }
   .lobby .lobby-panel.active { display: block; }
   .lobby .card { padding: 12px; }
   .lobby-overview > h2 { display: none; }
@@ -313,6 +306,11 @@ html:has(.rules-modal[open]) { overflow: hidden; }
   .lobby-chat .chat-msgs { flex: 1; min-height: 48px; max-height: none; }
   .lobby-settings .config-actions { position: sticky; bottom: -12px; z-index: 1; margin-bottom: -12px; padding: 8px 0 12px; background: var(--panel); }
 }
+/* Narrow phones: drop the "GAME" label so the name, game code and Rules all fit in the top bar. */
+@media (max-width: 399px) {
+  .game-code-label { display: none; }
+  .game-code { padding: 0 10px; }
+}
 /* Short landscape screens: links side by side, so the first tab still fits. */
 @media (max-height: 500px) {
   .lobby .lobby-overview.active { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px 12px; align-content: start; }
@@ -322,6 +320,8 @@ html:has(.rules-modal[open]) { overflow: hidden; }
 }
 .copy-row { display: flex; gap: 8px; }
 .copy-row input { font-family: ui-monospace, monospace; font-size: .85rem; }
+/* iOS zooms the page in when a field under 16px gets focus, and doesn't zoom back out. */
+@media (pointer: coarse) { input, select, textarea, .copy-row input { font-size: 16px; } }
 .final-table { width: 100%; border-collapse: collapse; font-size: .88rem; }
 .final-table th, .final-table td { padding: 6px 4px; border-top: 1px solid var(--line); text-align: left; }
 .final-table th { color: var(--muted); font-weight: 600; }

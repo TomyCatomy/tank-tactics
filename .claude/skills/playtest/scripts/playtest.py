@@ -64,8 +64,8 @@ def dist(a, b) -> int:
 class Server:
     """The real server process, on its own port and database file."""
 
-    def __init__(self, workdir: Path, name: str, **env: str):
-        self.name, self.dir = name, workdir / name
+    def __init__(self, workdir: Path, name: str, root: Path = ROOT, **env: str):
+        self.name, self.dir, self.root = name, workdir / name, root
         self.dir.mkdir(parents=True, exist_ok=True)
         self.db, self.logfile = self.dir / "game.db", self.dir / "server.log"
         with socket.socket() as s:
@@ -84,7 +84,7 @@ class Server:
         env = {k: v for k, v in os.environ.items() if k.upper() != "GOOGLE_CLIENT_ID"}
         env.update(self.env)
         log = open(self.logfile, "ab")
-        self.proc = subprocess.Popen([sys.executable, "-m", "tank_tactics.server"], cwd=ROOT, env=env,
+        self.proc = subprocess.Popen([sys.executable, "-m", "tank_tactics.server"], cwd=self.root, env=env,
                                      stdout=log, stderr=subprocess.STDOUT)
         log.close()
         self.http = httpx.Client(base_url=self.url, timeout=20, trust_env=False)
