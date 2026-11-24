@@ -108,6 +108,29 @@ label { display: block; }
 
 /* Home */
 .home { display: grid; gap: 16px; grid-template-columns: 1fr; max-width: 720px; margin: 0 auto; }
+.home-create-actions > * + * { margin-top: 12px; }
+.home-create-actions > .error-text:empty { display: none; }
+/* Phones: the home page fills the screen exactly; only the "Create a game" card scrolls, with its button
+   pinned to the card's bottom. Same query as the phone lobby below. */
+@media (max-width: 899px), (max-height: 500px) {
+  html:has(.home), body:has(.home) { height: 100vh; height: 100dvh; min-height: 0; overflow: hidden; }
+  body:has(.home) { display: flex; flex-direction: column; }
+  body:has(.home) .topbar { position: static; flex: none; }
+  main:has(.home) { flex: 1; min-height: 0; width: 100%; padding: 8px; }
+  .home { display: flex; flex-direction: column; gap: 8px; height: 100%; }
+  .home > * { flex: none; }
+  .home .card { padding: 12px; }
+  .home .stack > * + * { margin-top: 8px; }
+  .home h2 { margin-bottom: 0; }
+  .home .hero h1 { display: none; } /* the top bar already shows the name */
+  .home .hero p { margin: 0 4px; font-size: .85rem; color: var(--muted); }
+  .home-games { max-height: 25%; overflow-y: auto; overscroll-behavior: contain; }
+  .home-create { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+  .home-create-actions { position: sticky; bottom: -12px; z-index: 1; margin-bottom: -12px; padding: 8px 0 12px; background: var(--panel); }
+  .home-create-actions > * + * { margin-top: 8px; }
+}
+/* Short landscape screens: drop the tagline to leave room for the form. */
+@media (max-height: 500px) { .home .hero { display: none; } }
 .hero p { color: var(--muted); }
 details.adv > summary { cursor: pointer; min-height: var(--tap); display: flex; align-items: center; color: var(--muted); }
 .config-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }

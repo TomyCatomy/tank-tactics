@@ -316,6 +316,26 @@ def test_phone_lobby_needs_no_page_scroll(server, browser, width, height, role):
         page.context.close()
 
 
+@pytest.mark.parametrize(("width", "height"), PHONES, ids=_PHONE_IDS)
+def test_phone_home_needs_no_page_scroll(server, browser, width, height):
+    page = phone_page(browser, width, height)
+    try:
+        page.goto(server.url)
+        page.wait_for_selector(".home-create")
+        size = page.evaluate("({h: document.documentElement.scrollHeight, w: document.documentElement.scrollWidth})")
+        assert size == {"h": height, "w": width}
+        for target in (page.get_by_placeholder("Game code, e.g. k7mq2x"), page.get_by_role("button", name="Create game")):
+            box = target.bounding_box()
+            assert box["y"] >= 0 and box["y"] + box["height"] <= height
+        page.locator("details.adv summary").first.click()  # opening the advanced rules scrolls inside the card
+        assert page.evaluate("document.documentElement.scrollHeight") == height
+        page.get_by_placeholder("Your display name").fill("Ann")
+        page.get_by_role("button", name="Create game").click()
+        page.wait_for_selector(".game-code")
+    finally:
+        page.context.close()
+
+
 def test_phone_lobby_chat_tab_counts_unread(server, browser):
     host, bob = create_game(server)
     page = phone_page(browser, 390, 664)
