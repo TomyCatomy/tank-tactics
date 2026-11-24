@@ -119,17 +119,13 @@ def test_rules_modal_survives_state_push_and_fits_phone(server, page):
     assert box["x"] >= 0 and box["x"] + box["width"] <= 320 and box["y"] + box["height"] <= 568
 
 
-def test_phone_short_page_does_not_scroll_and_rules_modal_is_tall(server, page):
+def test_phone_short_page_does_not_scroll(server, page):
     host, _ = create_game(server)
     page.set_viewport_size({"width": 390, "height": 844})
     page.route_web_socket("**/ws**", lambda ws: None)  # never connects: stays on the short "Connecting..." screen
     page.goto(f"{server.url}/#/g/{host['game_id']}?t={host['token']}")
     page.wait_for_selector(".spinner")
     assert page.evaluate("document.documentElement.scrollHeight <= window.innerHeight")
-
-    page.locator("#rules-open").click()
-    box = page.locator("#rules-modal").bounding_box()
-    assert 0.65 * 844 <= box["height"] <= 0.75 * 844
 
 
 def test_lobby_text_follows_minimum_players(server, page):
@@ -280,13 +276,14 @@ def phone_page(browser, width, height):
 
 
 @pytest.mark.parametrize(("width", "height"), PHONES, ids=_PHONE_IDS)
-def test_rules_modal_fills_phone_screen(server, browser, width, height):
+def test_rules_modal_takes_most_of_phone_screen(server, browser, width, height):
     page = phone_page(browser, width, height)
     try:
         page.goto(server.url)
         page.locator("#rules-open").click()
         box = page.locator("#rules-modal").bounding_box()
-        assert (box["x"], box["y"], box["width"], box["height"]) == (6, 6, width - 12, height - 12)
+        assert (box["x"], box["width"]) == (6, width - 12)
+        assert abs(box["height"] - 0.7 * height) <= 1 and abs(box["y"] - 0.15 * height) <= 1  # 70% tall, centred
         body = page.locator("#rules-body")
         assert body.evaluate("el => el.scrollWidth <= el.clientWidth")
         body.evaluate("el => { el.scrollTop = el.scrollHeight; }")
