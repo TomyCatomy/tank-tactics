@@ -274,7 +274,8 @@ def test_config_dropdowns_show_full_option_text(server, page, viewport):
 FAKE_GSI = """
 window.google = { accounts: { id: {
   initialize(cfg) { window.__gsiCallback = cfg.callback; },
-  renderButton(el) {
+  renderButton(el, options) {
+    window.__gsiButtonOptions = options;
     const b = document.createElement('button');
     b.type = 'button'; b.className = 'fake-gsi'; b.textContent = 'Sign in with Google';
     b.onclick = () => { const u = window.fakeGoogleUser || {sub: 'sub-ann', name: 'Ann'};
@@ -290,6 +291,23 @@ def fake_google(page, user=("sub-ann", "Ann")) -> None:
     page.route("https://accounts.google.com/gsi/client",
                lambda route: route.fulfill(status=200, content_type="text/javascript", body=FAKE_GSI))
     page.add_init_script(f"window.fakeGoogleUser = {{sub: {user[0]!r}, name: {user[1]!r}}};")
+
+
+def test_google_button_is_a_centered_standard_pill(auth_server, page):
+    fake_google(page)
+    page.set_viewport_size({"width": 1280, "height": 900})
+    page.goto(auth_server.url)
+    page.wait_for_selector(".fake-gsi")
+    # `medium` keeps Google from swapping in its personalized "Sign in as <name>" button.
+    assert page.evaluate("window.__gsiButtonOptions") == {
+        "type": "standard", "theme": "filled_black", "shape": "pill", "size": "medium", "text": "signin_with", "locale": "en"}
+    signin = page.locator(".account-signin")
+    assert "card" not in signin.get_attribute("class")
+    assert signin.evaluate("el => getComputedStyle(el).backgroundColor") == "rgba(0, 0, 0, 0)"
+    box, button = signin.bounding_box(), page.locator(".fake-gsi").bounding_box()
+    assert abs((button["x"] + button["width"] / 2) - (box["x"] + box["width"] / 2)) <= 1
+    # Under the page's dark color-scheme, Google's iframe would get an opaque white backdrop.
+    assert page.locator(".gsi-button").evaluate("el => getComputedStyle(el).colorScheme") == "normal"
 
 
 def test_no_sign_in_without_a_google_client_id(server, page):
