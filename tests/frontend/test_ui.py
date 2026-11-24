@@ -317,20 +317,23 @@ def test_phone_lobby_needs_no_page_scroll(server, browser, width, height, role):
 
 
 @pytest.mark.parametrize(("width", "height"), PHONES, ids=_PHONE_IDS)
-def test_phone_home_needs_no_page_scroll(server, browser, width, height):
+def test_phone_home_scrolls_to_every_control(server, browser, width, height):
+    """The home page scrolls like a normal page on phones; nothing is hidden behind a pinned button."""
     page = phone_page(browser, width, height)
     try:
         page.goto(server.url)
         page.wait_for_selector(".home-create")
-        size = page.evaluate("({h: document.documentElement.scrollHeight, w: document.documentElement.scrollWidth})")
-        assert size == {"h": height, "w": width}
-        for target in (page.get_by_placeholder("Game code, e.g. k7mq2x"), page.get_by_role("button", name="Create game")):
-            box = target.bounding_box()
-            assert box["y"] >= 0 and box["y"] + box["height"] <= height
-        page.locator("details.adv summary").first.click()  # opening the advanced rules scrolls inside the card
-        assert page.evaluate("document.documentElement.scrollHeight") == height
+        assert page.evaluate("document.documentElement.scrollWidth") == width
+        assert page.evaluate("getComputedStyle(document.documentElement).overflowY") != "hidden"
+        summary = page.locator("details.adv summary").first
+        summary.scroll_into_view_if_needed()
+        box = summary.bounding_box()
+        assert box["y"] >= 0 and box["y"] + box["height"] <= height
+        summary.click()
         page.get_by_placeholder("Your display name").fill("Ann")
-        page.get_by_role("button", name="Create game").click()
+        create = page.get_by_role("button", name="Create game")
+        create.scroll_into_view_if_needed()
+        create.click()
         page.wait_for_selector(".game-code")
     finally:
         page.context.close()
@@ -379,3 +382,34 @@ def test_debug_options_hidden_when_not_allowed(server_without_debug, page):
 def test_debug_options_shown_when_allowed(server, page):
     page.goto(server.url)
     page.wait_for_selector("text=Debug: fast ticks")
+
+
+@pytest.mark.parametrize(("width", "height"), [(320, 568), (667, 375)], ids=["portrait", "landscape"])
+def test_phone_lobby_never_clips_with_large_system_font(server, browser, width, height):
+    """Real phones can lay out taller than the emulator (accessibility font size, toolbars): scroll, don't clip."""
+    host, _ = create_game(server)
+    page = phone_page(browser, width, height)
+    try:
+        open_as(page, server, host)
+        page.wait_for_selector(".lobby-overview.active")
+        page.add_style_tag(content="body { font-size: 30px; }")
+        assert page.locator(".lobby-overview").evaluate("el => el.clientHeight") >= 100
+        start = page.get_by_role("button", name="Start game")
+        start.scroll_into_view_if_needed()
+        box = start.bounding_box()
+        assert box["y"] >= 0 and box["y"] + box["height"] <= height
+    finally:
+        page.context.close()
+
+
+def test_phone_text_fields_are_large_enough_to_avoid_ios_zoom(server, browser):
+    host, _ = create_game(server)
+    page = phone_page(browser, 390, 664)
+    try:
+        open_as(page, server, host)
+        page.wait_for_selector(".lobby-overview.active")
+        sizes = page.evaluate("""() => [...document.querySelectorAll('input:not([type=checkbox]), select, textarea')]
+            .map(el => parseFloat(getComputedStyle(el).fontSize))""")
+        assert sizes and min(sizes) >= 16
+    finally:
+        page.context.close()
