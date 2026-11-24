@@ -498,12 +498,19 @@
 
   function chanOf(m, myId) { return m.to_id === null ? 'public' : (m.from_id === myId ? m.to_id : m.from_id); }
 
+  // Must match the phone-lobby media query in style.css.
+  const phoneLobby = window.matchMedia('(max-width: 899px), (max-height: 500px)');
+  function chatOnScreen() {
+    if (G.layout === 'lobby') return !phoneLobby.matches || G.lobbyTab === 'chat';
+    return G.tab === 'chat';
+  }
+
   function trackUnread(st) {
     const fresh = st.messages.filter((m) => m.id > G.lastMsgId);
     for (const m of fresh) {
       if (m.from_id === st.viewer_id) continue;
       const ch = chanOf(m, st.viewer_id);
-      const viewing = G.tab === 'chat' && G.chat === ch && !document.hidden;
+      const viewing = chatOnScreen() && G.chat === ch && !document.hidden;
       if (!viewing) G.unread[ch] = (G.unread[ch] || 0) + 1;
       if (ch !== 'public' && !viewing) notify(`DM from ${nameOf(m.from_id)}: ${m.text.slice(0, 80)}`);
     }
@@ -571,25 +578,34 @@
       G.nodes = {
         players: h('div'),
         config: h('div'),
-        start: h('div'),
+        start: h('div', { class: 'lobby-start' }),
         intro: h('p', { class: 'muted' }),
         seats: h('div'),
         chat: chatPanel(),
+        lobbyTabs: h('div', { class: 'tabs lobby-tabs', role: 'tablist' }),
       };
       const inviteUrl = `${location.origin}/#/join/${st.game.id}`;
       const rejoinUrl = `${location.origin}/#/g/${st.game.id}?t=${encodeURIComponent(G.token)}`;
-      $('#app').replaceChildren(h('div', { class: 'lobby' },
-        h('div', { class: 'stack' },
-          h('div', { class: 'card stack' },
-            h('h2', {}, 'Lobby'),
-            G.nodes.intro,
-            copyRow('Invite link', inviteUrl),
-            copyRow('Your personal rejoin link (keep it secret: it controls your tank)', rejoinUrl),
-            G.nodes.start),
+      // On phones only the active panel shows (see the lobby rules in style.css).
+      G.lobbyTab = 'overview';
+      G.nodes.lobbyPanels = {
+        overview: h('div', { class: 'card stack lobby-panel lobby-overview' },
+          h('h2', {}, 'Lobby'),
+          G.nodes.intro,
+          copyRow('Invite link', inviteUrl),
+          copyRow('Your personal rejoin link (keep it secret: it controls your tank)', rejoinUrl),
+          G.nodes.start),
+        players: h('div', { class: 'stack lobby-panel lobby-players' },
           G.nodes.seats,
-          h('div', { class: 'card' }, G.nodes.players),
-          h('div', { class: 'card' }, h('h2', {}, 'Chat'), G.nodes.chat)),
-        h('div', { class: 'card stack' }, h('h2', {}, 'Game settings'), G.nodes.config)));
+          h('div', { class: 'card' }, G.nodes.players)),
+        chat: h('div', { class: 'card lobby-panel lobby-chat' }, h('h2', {}, 'Chat'), G.nodes.chat),
+        settings: h('div', { class: 'card stack lobby-panel lobby-settings' }, h('h2', {}, 'Game settings'), G.nodes.config),
+      };
+      const panels = G.nodes.lobbyPanels;
+      $('#app').replaceChildren(h('div', { class: 'lobby' },
+        G.nodes.lobbyTabs,
+        h('div', { class: 'stack lobby-col' }, panels.overview, panels.players, panels.chat),
+        panels.settings));
     }
 
     // Players
@@ -644,7 +660,7 @@
       const form = configForm(st.game.config, { editable: isHost, allowDebug: st.allow_debug, onDirty: () => { G.configDirty = true; } });
       const kids = [form];
       if (isHost) {
-        kids.push(h('div', { class: 'row' },
+        kids.push(h('div', { class: 'row config-actions' },
           h('button', {
             class: 'primary', onclick: async () => {
               if (await post('config', { config: form.getValues() })) {
@@ -657,6 +673,23 @@
       G.nodes.config.replaceChildren(...kids);
     }
     renderChat();
+  }
+
+  function renderLobbyTabs() {
+    const unread = Object.values(G.unread).reduce((sum, n) => sum + n, 0);
+    const tabs = [['overview', 'Lobby'], ['players', `Players (${G.state.players.length})`], ['chat', 'Chat'], ['settings', 'Settings']];
+    G.nodes.lobbyTabs.replaceChildren(...tabs.map(([k, label]) => h('button', {
+      type: 'button', role: 'tab', 'aria-selected': String(G.lobbyTab === k),
+      onclick: () => {
+        G.lobbyTab = k;
+        renderChat(); // clears unread if the chat just came into view, and redraws these tabs
+        if (k === 'chat') {
+          const list = G.nodes.chat._parts.list;
+          list.scrollTop = list.scrollHeight; // it couldn't scroll while hidden
+        }
+      },
+    }, label, k === 'chat' && unread ? h('span', { class: 'count' }, String(unread)) : null)));
+    for (const [k, panel] of Object.entries(G.nodes.lobbyPanels)) panel.classList.toggle('active', G.lobbyTab === k);
   }
 
   /** Debug: join extra players from this browser (only when the game enables debug.local_seats). */
@@ -1102,8 +1135,7 @@
     const label = (id, name) => `${name}${G.unread[id] ? ` (${G.unread[id]} new)` : ''}`;
     channel.replaceChildren(h('option', { value: 'public', selected: G.chat === 'public' }, label('public', 'Public channel')),
       ...others.map((p) => h('option', { value: p.id, selected: G.chat === p.id }, label(p.id, `DM: ${p.name}`))));
-    const visible = (G.tab === 'chat' || G.layout === 'lobby');
-    if (visible && !document.hidden) delete G.unread[G.chat];
+    if (chatOnScreen() && !document.hidden) delete G.unread[G.chat];
     const msgs = st.messages.filter((m) => chanOf(m, st.viewer_id) === G.chat);
     const atBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 40;
     list.replaceChildren(...(msgs.length ? msgs : [null]).map((m) => m
@@ -1114,6 +1146,7 @@
     if (atBottom || !list.dataset.init) { list.scrollTop = list.scrollHeight; list.dataset.init = '1'; }
     input.placeholder = G.chat === 'public' ? 'Message everyone…' : `Message ${nameOf(G.chat)} privately…`;
     if (G.layout === 'match') renderTabs();
+    else if (G.layout === 'lobby') renderLobbyTabs();
   }
 
   // ----- Jury ----------------------------------------------------------------------
@@ -1236,6 +1269,8 @@
 
   // ---------------------------------------------------------------------------
   window.addEventListener('hashchange', route);
-  document.addEventListener('visibilitychange', () => { if (!document.hidden && G?.state && G.tab === 'chat') renderChat(); });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && G?.state && G.nodes?.chat && chatOnScreen()) renderChat(); });
+  // Rotating or resizing can bring the lobby chat into view without a tab click.
+  phoneLobby.addEventListener('change', () => { if (G?.state && G.layout === 'lobby') renderChat(); });
   route();
 })();
