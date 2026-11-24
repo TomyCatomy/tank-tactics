@@ -317,6 +317,11 @@ def g_home(pg, url, fx, api):
     pg.wait_for_selector("text=Create a game")
     settle(pg)
     yield "home"
+    fold = pg.locator(".create-fold > summary")
+    if fold.count():  # the create form starts folded
+        fold.first.click(force=True)
+        settle(pg)
+        yield "home-create-open"
     det = pg.locator("details.adv summary")
     if det.count():
         det.first.click(force=True)

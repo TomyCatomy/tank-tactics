@@ -1327,6 +1327,7 @@ def create_join_and_start_through_the_ui(t: T):
     host, guest = t.h.browser.page(t), t.h.browser.page(t)
     try:
         host.goto(t.srv.url)
+        host.locator(".create-fold > summary").click()  # the create form starts folded
         host.get_by_placeholder("Your display name").first.fill("Hosty")
         host.get_by_role("button", name="Create game").click()
         host.wait_for_selector(".game-code")
