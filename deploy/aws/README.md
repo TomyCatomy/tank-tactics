@@ -30,7 +30,6 @@ if several pushes wait, only the newest is deployed.
 
 2. In GitHub, under **Settings > Secrets and variables > Actions > Variables**, add:
    - `AWS_ROLE_ARN`: the value printed above.
-   - `GOOGLE_CLIENT_ID` (optional): turns on Google sign-in.
 
 3. Merge the workflow to `main`. GitHub only offers **Run workflow** for workflows on the
    default branch.
@@ -39,6 +38,33 @@ No AWS keys are stored in GitHub. The job gets one-hour credentials through OIDC
 role trusts only `main` of this repository. It has no IAM write access, can pass only the
 instance role, can launch only `t4g.small` or `t4g.micro`, and can change or delete only
 EC2 resources tagged `app=tank-tactics`.
+
+## Google sign-in (required)
+
+The deployed server always has Google sign-in on. It reads its OAuth client ID from SSM
+Parameter Store, not from GitHub, and the parameter must exist before `up` or `redeploy`:
+
+```bash
+aws ssm put-parameter --profile tank-tactics --region eu-north-1 --type String \
+  --name /tank-tactics/google-client-id --value '<client id>.apps.googleusercontent.com'
+```
+
+[`fetch-config.sh`](fetch-config.sh), installed as `/usr/local/bin/tank-tactics-config`,
+writes it to `/etc/tank-tactics.env` on first boot and before every `redeploy`, so a change
+takes effect on the next `redeploy`. The client ID is public, so a plain `String` is fine;
+the instance role reads it through `AmazonSSMManagedInstanceCore`.
+
+The deployment fails if sign-in can't be turned on:
+
+- Before writing it, the server asks Google whether the client exists (an unknown or
+  deleted client gets `invalid_client`). It can't check *Authorized JavaScript origins*,
+  so keep the site's address there by hand.
+- `redeploy`: if the parameter is missing, malformed, unreadable or not a real client, or
+  Google can't be reached, the run fails before the
+  restart and the old version keeps running. It also fails if the restarted server's
+  `/api/auth/config` has no client ID.
+- `up`: boot stops before the game starts, and the run fails its health check. It also
+  fails if `/api/auth/config` through CloudFront has no client ID.
 
 ## Why this shape
 
@@ -55,7 +81,7 @@ browser --HTTPS/WSS--> CloudFront (*.cloudfront.net, caching off)
 |---|---|
 | Foundation | [`github-access.yaml`](github-access.yaml): stays in place across `up` and `down` |
 | Instance | Amazon Linux 2023 (arm64), CPU credits `standard`, IMDSv2 required, 10 GB encrypted gp3 |
-| Boot | [`userdata.sh`](userdata.sh): Python venv, `/usr/local/bin/tank-tactics-deploy`, systemd unit `tank-tactics`, database at `/var/lib/tank-tactics/tank-tactics.db` |
+| Boot | [`userdata.sh`](userdata.sh): settings from SSM, Python venv, `/usr/local/bin/tank-tactics-deploy`, systemd unit `tank-tactics`, database at `/var/lib/tank-tactics/tank-tactics.db` |
 | Access | No SSH or key pair; commands go through AWS Systems Manager |
 | Network | Default VPC. TCP 8080 is open only to the CloudFront origin-facing prefix list |
 | Backups | Daily 03:00 UTC snapshots of volumes tagged `backup=daily`, keep 7 |

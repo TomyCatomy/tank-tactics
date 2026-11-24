@@ -19,7 +19,7 @@ from typing import Any, Callable
 
 from . import game
 from .config import ConfigError, DebugConfig, GameConfig, ServerConfig, is_valid_unicode
-from .store import Message, Store, hash_token
+from .store import Message, Store, User, hash_token
 
 
 class ServiceError(Exception):
@@ -81,6 +81,7 @@ class GameService:
         self._global = threading.Lock()
         self.action_limiter = RateLimiter(self.cfg.action_rate_per_second, self.cfg.action_rate_per_second, clock)
         self.chat_limiter = RateLimiter(self.cfg.chat_rate_per_10s / 10, self.cfg.chat_rate_per_10s, clock)
+        self.login_limiter = RateLimiter(self.cfg.login_rate_per_minute / 60, self.cfg.login_rate_per_minute, clock)
         # Called with (game_id, new_entries) after every committed change. The API's Hub hooks this.
         self.on_change: Callable[[str, list[game.LogEntry]], None] = lambda gid, entries: None
 
@@ -164,6 +165,7 @@ class GameService:
         game_id: str,
         fn: Callable[[game.GameState], list[game.LogEntry]],
         new_tokens: dict[str, str] | None = None,
+        owners: dict[str, str] | None = None,
     ) -> list[game.LogEntry]:
         """Run ``fn`` on the game under its mutex and persist the result atomically.
 
@@ -180,7 +182,7 @@ class GameService:
                 raise ServiceError(e.code, e.message) from None
             except ConfigError as e:
                 raise ServiceError("invalid_config", str(e)) from None
-            self.store.save(work, entries, new_tokens)
+            self.store.save(work, entries, new_tokens, owners)
             self._put(work)
         self.on_change(game_id, entries)
         return entries
@@ -193,7 +195,8 @@ class GameService:
         if not self.cfg.allow_debug and after != before and after != DebugConfig():
             raise ConfigError("Debug options are disabled on this server.")
 
-    def create_game(self, host_name: Any, config: Any = None) -> dict[str, str]:
+    def create_game(self, host_name: Any, config: Any = None, user_id: str | None = None) -> dict[str, str]:
+        """``user_id``: the signed-in account to link the host's seat to, if any."""
         try:
             cfg = GameConfig.parse(config)
             self._check_debug(DebugConfig(), cfg.debug)
@@ -209,17 +212,22 @@ class GameService:
         except game.GameError as e:
             raise ServiceError(e.code, e.message) from None
         th = hash_token(token)
-        self.store.save(state, state.log, {player_id: th})
+        self.store.save(state, state.log, {player_id: th}, {player_id: user_id} if user_id else None)
         with self._global:
             self.games[game_id] = state
             self.messages[game_id] = []
             self.tokens[th] = (game_id, player_id)
         return {"game_id": game_id, "player_id": player_id, "token": token}
 
-    def join_game(self, game_id: str, name: Any) -> dict[str, str]:
+    def join_game(self, game_id: str, name: Any, user_id: str | None = None) -> dict[str, str]:
+        """``user_id``: the signed-in account to link the seat to. An account holds at
+        most one seat per game (the database enforces it too)."""
+        if user_id is not None and self.store.user_seat(game_id, user_id) is not None:
+            raise ServiceError("already_joined", "You are already in this game.", 409)
         player_id, token = secrets.token_hex(8), secrets.token_urlsafe(24)
         th = hash_token(token)
-        self._mutate(game_id, lambda s: game.add_player(s, player_id, name, self.clock()), {player_id: th})
+        self._mutate(game_id, lambda s: game.add_player(s, player_id, name, self.clock()), {player_id: th},
+                     {player_id: user_id} if user_id else None)
         with self._global:
             self.tokens[th] = (game_id, player_id)
         return {"game_id": game_id, "player_id": player_id, "token": token}
@@ -265,6 +273,54 @@ class GameService:
             for th, (gid, pid) in list(self.tokens.items()):
                 if gid == game_id and pid == player_id:
                     del self.tokens[th]
+
+    # -- accounts ---------------------------------------------------------------
+
+    def sign_in(self, google_sub: str, name: str) -> dict[str, Any]:
+        """Sign in (creating the account on first use) after the API has verified a
+        Google ID token. Returns a new session token, shown to the client once."""
+        name = " ".join(name.split())[:64] or "Player"
+        now = self.clock()
+        user = self.store.upsert_google_user(google_sub, name, secrets.token_hex(8), now)
+        token = secrets.token_urlsafe(32)
+        self.store.add_auth_session(hash_token(token), user.id, now, now + self.cfg.session_ttl_days * 86_400)
+        return {"token": token, "user": {"id": user.id, "name": user.name}}
+
+    def session_user(self, token: str | None) -> User:
+        """The user a session token belongs to (401 if missing, unknown or expired)."""
+        if not token:
+            raise ServiceError("unauthorized", "Sign in first.", 401)
+        user = self.store.session_user(hash_token(token), self.clock())
+        if user is None:
+            raise ServiceError("unauthorized", "Your sign-in has expired. Sign in again.", 401)
+        return user
+
+    def sign_out(self, token: str) -> None:
+        self.store.delete_auth_session(hash_token(token))
+
+    def user_games(self, user_id: str) -> list[dict[str, Any]]:
+        """The seats an account holds, newest game first."""
+        return [
+            {"game_id": s.game_id, "player_id": s.player_id, "name": s.name, "status": s.status, "is_host": s.is_host}
+            for s in self.store.user_seats(user_id)
+        ]
+
+    def claim_seat(self, game_id: str, user_id: str) -> dict[str, str]:
+        """A fresh token for the account's seat in this game, so it can be played from
+        another device. Earlier tokens for the seat keep working."""
+        player_id = self.store.user_seat(game_id, user_id)
+        if player_id is None:
+            raise ServiceError("not_found", "You have no seat in this game.", 404)
+        token = secrets.token_urlsafe(24)
+        th = hash_token(token)
+        with self._lock(game_id):
+            # Under the game lock, so a concurrent removal can't leave a dangling token.
+            if game.find_player(self._game(game_id), player_id) is None:
+                raise ServiceError("not_found", "You have no seat in this game.", 404)
+            self.store.add_seat_token(th, game_id, player_id, self.clock())
+            with self._global:
+                self.tokens[th] = (game_id, player_id)
+        return {"game_id": game_id, "player_id": player_id, "token": token}
 
     # -- game actions -----------------------------------------------------------
 
