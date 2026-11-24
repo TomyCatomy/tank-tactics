@@ -523,3 +523,45 @@ def test_phone_text_fields_are_large_enough_to_avoid_ios_zoom(server, browser):
         assert sizes and min(sizes) >= 16
     finally:
         page.context.close()
+
+
+@pytest.mark.parametrize(("width", "height"), PHONES, ids=_PHONE_IDS)
+def test_phone_shows_title_and_fits_top_bar(server, browser, width, height):
+    host, _ = create_game(server)
+    page = phone_page(browser, width, height)
+    try:
+        page.goto(server.url)
+        page.wait_for_selector(".home-create")
+        if height > 500:  # short landscape screens drop the hero to leave room for the form
+            assert page.locator(".hero h1").is_visible()
+        open_as(page, server, host)
+        page.wait_for_selector(".lobby-overview.active")
+        assert page.locator(".topbar .brand").inner_text().strip() == "Tank Tactics"
+        assert page.evaluate("parseFloat(getComputedStyle(document.querySelector('.topbar .brand')).fontSize)") >= 12
+        assert page.locator(".topbar").evaluate("el => el.scrollWidth <= el.clientWidth")
+        rules = page.locator("#rules-open").bounding_box()
+        assert rules["x"] + rules["width"] <= width
+    finally:
+        page.context.close()
+
+
+@pytest.mark.parametrize(("width", "height"), [(320, 568), (390, 664)], ids=["320x568", "390x664"])
+def test_phone_top_bar_stays_visible(server, browser, width, height):
+    host, _ = create_game(server)
+    page = phone_page(browser, width, height)
+    try:
+        page.goto(server.url)
+        page.wait_for_selector(".home-create")
+        page.evaluate("window.scrollTo(0, document.documentElement.scrollHeight)")
+        assert page.locator(".topbar").bounding_box()["y"] == 0, "home"
+        page.evaluate(f"location.hash = '#/g/{host['game_id']}?t={host['token']}'")
+        page.wait_for_selector(".lobby-overview.active")
+        assert page.evaluate("scrollY") == 0, "a new page opens at the top"
+        page.add_style_tag(content=".lobby .lobby-panel { min-height: 2000px; }")  # make the lobby taller than the screen
+        page.evaluate("""() => { const m = document.querySelector('main');
+            m.scrollTop = m.scrollHeight; window.scrollTo(0, document.documentElement.scrollHeight); }""")
+        assert page.evaluate("document.querySelector('main').scrollTop + scrollY") > 0, "the lobby can still scroll"
+        assert page.locator(".topbar").bounding_box()["y"] == 0, "lobby"
+        assert page.locator(".topbar .brand").is_visible()
+    finally:
+        page.context.close()
