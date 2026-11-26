@@ -1,0 +1,48 @@
+# Only `staging` is merged into `main` (see "Workspaces and branches" in CLAUDE.md).
+# The repo's GitHub plan has no branch protection or rulesets, so this workflow enforces it:
+# - a pull request into `main` from any other branch is moved to target `staging`, with a comment;
+# - after `main` moves, `staging` is fast-forwarded to it, so the two stay identical.
+name: Main from staging
+
+on:
+  pull_request_target: # runs main's copy of this file and never checks out the PR's code
+    types: [opened, reopened, edited, synchronize]
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  retarget:
+    if: >-
+      github.event_name == 'pull_request_target' &&
+      (github.event.pull_request.head.ref != 'staging' ||
+       github.event.pull_request.head.repo.full_name != github.repository)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Move the pull request to staging
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          gh pr edit "$PR" --repo "$GITHUB_REPOSITORY" --base staging
+          gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --body \
+            'Only `staging` can be merged into `main`, so this pull request now targets `staging`. To release, open a pull request from `staging` into `main`.'
+
+  sync-staging:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Fast-forward staging to main
+        run: |
+          if git merge-base --is-ancestor origin/staging HEAD; then
+            git push origin HEAD:refs/heads/staging
+          else
+            echo "::warning::staging has commits that main doesn't, so it was not fast-forwarded."
+          fi
