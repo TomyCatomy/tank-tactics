@@ -2,7 +2,8 @@
 
 Accounts are an extra layer over the per-game seat tokens: playing never requires
 one. A signed-in player's seats are linked to their account, so they can list them
-and open them on any device (``/api/me/games``, ``/claim``).
+and open them on any device (``/api/me/games``, ``/claim``). Seats joined before
+signing in are linked afterwards from their seat tokens (``/api/me/seats/link``).
 """
 from __future__ import annotations
 
@@ -11,7 +12,9 @@ from fastapi import APIRouter, Request
 from ...service import ServiceError
 from ..deps import ServiceDep, SessionTokenDep, UserDep
 from ..google import InvalidGoogleToken
-from ..schemas import AuthConfig, Credentials, GoogleSignInRequest, Ok, SignedIn, UserGame, UserOut
+from ..schemas import (
+    AuthConfig, Credentials, GoogleSignInRequest, LinkSeatsRequest, Ok, SeatsLinked, SignedIn, UserGame, UserOut,
+)
 
 router = APIRouter(prefix="/api", tags=["accounts"])
 
@@ -55,6 +58,13 @@ def me(user: UserDep) -> UserOut:
 def my_games(user: UserDep, service: ServiceDep) -> list[UserGame]:
     """Every seat linked to your account, newest game first."""
     return [UserGame(**g) for g in service.user_games(user.id)]
+
+
+@router.post("/me/seats/link")
+def link_seats(body: LinkSeatsRequest, user: UserDep, service: ServiceDep) -> SeatsLinked:
+    """Link seats this device already holds tokens for (joined before signing in) to your
+    account, so they show up in ``/api/me/games`` on every device."""
+    return SeatsLinked(linked=service.link_seats(user.id, body.tokens))
 
 
 @router.post("/me/games/{game_id}/claim")

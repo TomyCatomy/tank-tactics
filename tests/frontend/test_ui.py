@@ -353,6 +353,36 @@ def test_signed_in_games_follow_you_to_another_device(auth_server, browser):
     ctx2.close()
 
 
+def test_seats_joined_before_signing_in_follow_you_to_another_device(auth_server, browser):
+    # Device 1: create a game anonymously, then sign in afterwards.
+    ctx1 = browser.new_context()
+    page = ctx1.new_page()
+    fake_google(page)
+    page.goto(auth_server.url)
+    page.wait_for_selector(".fake-gsi")
+    open_create_form(page)
+    page.fill(".home input[autocomplete=nickname]", "Ann")
+    page.click("text=Create game")
+    page.wait_for_selector(".game-code")
+    gid = page.locator(".game-code-id").inner_text().strip()
+    page.goto(auth_server.url)
+    page.click(".fake-gsi")
+    page.wait_for_selector("text=Signed in as")
+    ctx1.close()
+
+    # Device 2: signing in lists the game and opens the same seat.
+    ctx2 = browser.new_context()
+    page = ctx2.new_page()
+    fake_google(page)
+    page.goto(auth_server.url)
+    page.click(".fake-gsi")
+    page.wait_for_selector(f".plist li:has-text('{gid}')")
+    page.click(f".plist li:has-text('{gid}')")
+    page.wait_for_selector(".game-code")
+    assert [p["name"] for p in auth_server.service.view(gid, None)["players"]] == ["Ann"]
+    ctx2.close()
+
+
 def test_invite_link_opens_your_existing_seat_when_signed_in(auth_server, browser):
     ctx = browser.new_context()
     page = ctx.new_page()

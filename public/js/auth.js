@@ -46,3 +46,12 @@ export async function claimSeat(gid, name) {
   saved.set(gid, { token: res.token, playerId: res.player_id, name });
   return res;
 }
+
+/**
+ * Link the seats saved on this device to the account, so seats joined before signing in show up on
+ * the account's other devices too. The server skips seats that are already linked, so this is safe to repeat.
+ */
+export async function linkSavedSeats() {
+  const tokens = Object.keys(saved.all()).flatMap((gid) => saved.seats(gid).map((s) => s.token)).slice(0, 500);
+  if (tokens.length) await accountApi('POST', '/api/me/seats/link', { tokens });
+}

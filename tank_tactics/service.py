@@ -319,6 +319,24 @@ class GameService:
             for s in self.store.user_seats(user_id)
         ]
 
+    def link_seats(self, user_id: str, tokens: list[str]) -> int:
+        """Link seats the client already holds tokens for (joined before signing in) to the
+        account, so the account can open them on other devices. A seat token proves the
+        seat is yours; seats owned by another account, or a second seat in a game where the
+        account already has one, are skipped. Returns how many seats were newly linked."""
+        linked = 0
+        for token in dict.fromkeys(tokens):
+            with self._global:
+                hit = self.tokens.get(hash_token(token)) if is_valid_unicode(token) else None
+            if hit is None:
+                continue
+            game_id, player_id = hit
+            with self._lock(game_id):  # so a concurrent removal can't race the link
+                state = self.get(game_id)
+                if state is not None and game.find_player(state, player_id) is not None:
+                    linked += self.store.link_seat(game_id, player_id, user_id)
+        return linked
+
     def claim_seat(self, game_id: str, user_id: str) -> dict[str, str]:
         """A fresh token for the account's seat in this game, so it can be played from
         another device. Earlier tokens for the seat keep working."""
