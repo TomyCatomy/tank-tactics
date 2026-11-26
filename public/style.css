@@ -320,7 +320,7 @@ html:has(.rules-modal[open]) { overflow: hidden; }
 @media (min-width: 900px) { .lobby { grid-template-columns: 1fr 1fr; } }
 .lobby-tabs { display: none; }
 .lobby-players > :empty + * { margin-top: 0; }
-/* Phones: the lobby fills the screen and shows one tab at a time. Keep this query in sync with `phoneLobby` in app.js. */
+/* Phones: the lobby fills the screen and shows one tab at a time. Keep this query in sync with `phoneLobby` in js/game/chat.js. */
 @media (max-width: 899px), (max-height: 500px) {
   /* Fit the screen, but never clip: if a real phone lays out taller than expected (big system font,
      browser toolbars), the page scrolls instead of cutting content off. */

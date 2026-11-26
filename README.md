@@ -41,7 +41,13 @@ tank_tactics/
     background.py  the tick scheduler
     notify.py    Discord webhook (public events only)
   server.py    entry point: runs the app with uvicorn
-public/        the web client (index.html, app.js, style.css)
+public/        the web client (index.html, style.css, plain ES modules in js/)
+  js/main.js   entry point: rules modal, global listeners, starts the router
+  js/          dom, api, storage, auth, notify, format, router, config-form
+  js/schedule/ RRULE helpers (rules.js) and the schedule editor
+  js/pages/    home and join pages
+  js/game/     the game page: session (socket + state), view, lobby, match,
+               board, sheets, tabs, chat, events, game-over
 scripts/simulate.py   bot simulation at accelerated time
 tests/
   support.py   helpers shared by both suites
