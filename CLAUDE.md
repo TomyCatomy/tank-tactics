@@ -65,6 +65,12 @@ Two suites, each with its own `conftest.py` (fixtures). Plain helpers shared by 
 
 A Python file is at most 150 lines unless there's a good reason for it to be longer; if there is one, say what it is in the file's docstring. Split a module that would grow past that into a package of focused modules that re-exports its public API from `__init__.py`, as `tank_tactics/recurrence/` does.
 
+## Workspaces and branches
+
+- Each new feature request in a thread starts in its own workspace: before changing any files, create a separate git worktree checked out to a new feature branch (for example `feature/<short-name>`) based on the latest `origin/main`, and do all the work for that request there. Never make feature changes on `main` or in the main checkout.
+- Follow-up fixes and tweaks to that feature stay in the same workspace and branch (and are folded in as described under Commits). A different, unrelated feature request in the same thread gets its own new workspace and branch.
+- The `.venv` is not shared with a new worktree: either create one there with the setup command above, or run the main checkout's interpreter by its absolute path from inside the worktree.
+
 ## Commits
 
 The goal is that the set of commits that gets merged is coherent and doesn't go in circles (no "add X", "fix X", "tweak X" chains).
