@@ -1,7 +1,7 @@
 """Run a full Tank Tactics game with bots at accelerated time and print the log.
 
-Uses the real game-logic module with a virtual clock (AP interval = 1 second by
-default), so a game that would take weeks finishes instantly. Use it to sanity-check
+Uses the real game-logic module with a virtual clock (debug fast ticks: one AP tick
+per second; the jury closes on the same ticks), so a game that would take weeks finishes instantly. Use it to sanity-check
 balance:
 
     python scripts/simulate.py --players 12 --seed 7
@@ -165,8 +165,8 @@ def describe(s: game.GameState, e: game.LogEntry, t0: float) -> str:
 def simulate(args: argparse.Namespace, seed: int, verbose: bool) -> tuple[game.GameState, dict[str, Bot]]:
     rng = random.Random(seed)
     patch = {
-        "ap": {"interval_seconds": 1},
-        "jury": {"enabled": args.jury, "interval_seconds": 1},
+        "debug": {"fast_ticks": True, "tick_seconds": 1},  # one AP tick per virtual second
+        "jury": {"enabled": args.jury},  # cycles close on the AP ticks
         "fog_of_war": args.fog,
         "max_duration_seconds": args.max_seconds,
         "players": {"maximum": max(args.players, 2)},
@@ -242,7 +242,7 @@ def main() -> None:
 
     if args.runs > 1:
         print(f"{args.runs} games, {args.players} players, seed {base_seed}..{base_seed + args.runs - 1}")
-        print(f"avg length: {sum(durations) / len(durations):.1f} AP intervals; end reasons: {dict(reasons)}")
+        print(f"avg length: {sum(durations) / len(durations):.1f} AP ticks; end reasons: {dict(reasons)}")
         print("win share by personality:")
         for name in PERSONALITIES:
             print(f"  {name:<11} {wins[name] / args.runs:6.1%}")

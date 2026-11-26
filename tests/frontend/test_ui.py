@@ -501,6 +501,8 @@ def test_desktop_lobby_shows_all_panels_without_tabs(server, page):
 def open_create_form(page):
     page.locator(".create-fold > summary").click()
     page.get_by_role("button", name="Create game").wait_for()
+    # The schedule preview loads asynchronously and makes the form taller; let it settle first.
+    page.wait_for_selector(".sched-next li")
 
 
 def test_create_form_is_folded_until_opened(server, page):
@@ -600,5 +602,246 @@ def test_phone_top_bar_stays_visible(server, browser, width, height):
         assert page.evaluate("document.querySelector('main').scrollTop + scrollY") > 0, "the lobby can still scroll"
         assert page.locator(".topbar").bounding_box()["y"] == 0, "lobby"
         assert page.locator(".topbar .brand").is_visible()
+    finally:
+        page.context.close()
+
+
+# -- AP schedule editor (presets / custom builder / raw RRULE) --------------------------------
+
+def open_schedule(page, server):
+    page.goto(server.url)
+    open_create_form(page)
+    page.wait_for_selector(".sched-next li")
+    return page.locator(".sched")
+
+
+def raw_rule(page) -> str:
+    return page.locator(".sched-adv input").input_value()
+
+
+def wait_summary(page, text: str) -> None:
+    page.locator(".sched-summary", has_text=text).wait_for()
+
+
+def test_schedule_preset_sets_the_rule_and_previews_it(server, page):
+    sched = open_schedule(page, server)
+    zone = page.evaluate("Intl.DateTimeFormat().resolvedOptions().timeZone")
+    assert sched.get_by_label("Time zone").input_value() == zone  # defaults to the browser's zone
+    assert raw_rule(page) == "FREQ=DAILY"  # the default: every 24 hours from the start
+    preset = sched.get_by_label("AP schedule: +1 AP for every living tank")
+    assert preset.input_value() == "start"
+    labels = preset.locator("option").all_inner_texts()
+    assert "Every weekday (Mon–Fri)" in labels and any(t.startswith("Weekly on ") for t in labels)
+    assert any(t.startswith("Monthly") for t in labels) and "Custom…" in labels
+    # Nothing that skips months: no 29th-31st, no fifth weekday.
+    assert not any(t in ("Monthly on the 29th", "Monthly on the 30th", "Monthly on the 31st") or "5th" in t for t in labels)
+
+    preset.select_option("weekdays")
+    at = sched.locator(".sched-row").get_by_label("at", exact=True)
+    at.fill("09:30")
+    at.dispatch_event("change")
+    wait_summary(page, "Every weekday (Mon–Fri) at 09:30")
+    assert raw_rule(page) == "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR;BYHOUR=9;BYMINUTE=30"
+    assert sched.locator(".sched-next li").count() == 5
+
+    preset.select_option("hours")
+    sched.get_by_label("Hours between ticks").fill("6")
+    sched.get_by_label("Hours between ticks").dispatch_event("change")
+    wait_summary(page, "Every 6 hours at minute 00")
+    assert raw_rule(page) == "FREQ=HOURLY;INTERVAL=6;BYMINUTE=0"
+
+    # Created games get exactly the rule and zone on screen.
+    preset.select_option("weekdays")
+    wait_summary(page, "Every weekday")
+    page.get_by_placeholder("Your display name").fill("Ann")
+    page.get_by_role("button", name="Create game").click()
+    page.wait_for_selector(".game-code")
+    if page.viewport_size["width"] < 900:
+        page.get_by_role("tab", name="Settings").click()
+    page.wait_for_selector(".sched-next li")
+    assert page.locator(".sched-row select").input_value() == "weekdays"
+    assert raw_rule(page) == "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR;BYHOUR=9;BYMINUTE=30"
+    assert page.locator(".sched-tz select").input_value() == zone
+
+
+def test_schedule_custom_builder_writes_the_rule(server, page):
+    sched = open_schedule(page, server)
+    sched.locator(".sched-row select").select_option("custom")
+    builder = sched.locator(".sched-builder")
+    builder.wait_for()
+    assert builder.get_by_label("Repeat unit").input_value() == "week"
+    pressed = builder.locator(".chip[aria-pressed=true]")
+    assert pressed.count() == 1  # today's weekday
+    today = pressed.get_attribute("data-day")
+
+    for day in ("Monday", "Wednesday", "Friday"):
+        chip = builder.get_by_role("button", name=day, exact=True)
+        if chip.get_attribute("aria-pressed") == "false":
+            chip.click()
+    if today not in ("MO", "WE", "FR"):
+        builder.locator(f".chip[data-day={today}]").click()  # untoggle it again
+    builder.get_by_label("Repeat every").fill("2")
+    builder.get_by_label("Repeat every").dispatch_event("change")
+    builder.get_by_label("at", exact=True).fill("18:45")
+    builder.get_by_label("at", exact=True).dispatch_event("change")
+    wait_summary(page, "Every 2 weeks on Monday, Wednesday, Friday at 18:45")
+    assert raw_rule(page) == "FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,WE,FR;BYHOUR=18;BYMINUTE=45"
+    assert [c.get_attribute("aria-pressed") for c in builder.locator(".chip").all()] == \
+        ["true", "false", "true", "false", "true", "false", "false"]
+
+    # Monthly: always every month (anything less would skip months), by day 1-28, the last day,
+    # or the nth / last <weekday>.
+    builder.get_by_label("Repeat unit").select_option("month")
+    assert builder.get_by_label("Repeat every").input_value() == "1" and builder.get_by_label("Repeat every").is_disabled()
+    day = builder.get_by_label("Day of the month")
+    assert day.get_attribute("max") == "28"
+    day.fill("31")
+    day.dispatch_event("change")
+    assert day.input_value() == "28"  # clamped: the 31st isn't in every month
+    day.fill("15")
+    day.dispatch_event("change")
+    wait_summary(page, "Monthly on day 15 at 18:45")
+    assert raw_rule(page) == "FREQ=MONTHLY;BYMONTHDAY=15;BYHOUR=18;BYMINUTE=45"
+    builder.get_by_role("radio", name="The last day").check()
+    wait_summary(page, "Monthly on the last day at 18:45")
+    assert raw_rule(page) == "FREQ=MONTHLY;BYMONTHDAY=-1;BYHOUR=18;BYMINUTE=45"
+    builder.locator("input[value=last]").check()
+    page.wait_for_function("(t => t.includes('Monthly on the last') && !t.includes('last day'))"
+                           "(document.querySelector('.sched-summary').textContent)")
+    assert "BYSETPOS=-1" in raw_rule(page)
+    builder.get_by_label("Repeat unit").select_option("week")
+    every = builder.get_by_label("Repeat every")
+    every.fill("9")
+    every.dispatch_event("change")
+    assert every.input_value() == "4"  # more than 4 weeks could skip a month
+    wait_summary(page, "Every 4 weeks")
+    builder.get_by_label("Repeat every").fill("2")
+    builder.get_by_label("Repeat every").dispatch_event("change")
+
+    # Hourly: an "at minute" field instead of a time of day.
+    builder.get_by_label("Repeat unit").select_option("hour")
+    builder.get_by_label("at minute").fill("5")
+    builder.get_by_label("at minute").dispatch_event("change")
+    assert not builder.get_by_label("at", exact=True).is_visible()
+    wait_summary(page, "Every 2 hours at minute 05")
+    assert raw_rule(page) == "FREQ=HOURLY;INTERVAL=2;BYMINUTE=5"
+
+
+def test_schedule_raw_rule_validation_and_round_trip(server, page):
+    sched = open_schedule(page, server)
+    adv = sched.locator(".sched-adv")
+    assert adv.get_attribute("open") is None  # collapsed by default
+    adv.locator("summary").click()
+    raw = adv.get_by_label("Recurrence rule", exact=False)
+
+    raw.fill("FREQ=DAILY;COUNT=3")
+    adv.locator(".error-text", has_text="COUNT is not allowed").wait_for()
+    assert raw.get_attribute("aria-invalid") == "true"
+    assert sched.locator(".sched-next li").count() == 0
+    raw.fill("FREQ=SECONDLY;INTERVAL=5")
+    adv.locator(".error-text", has_text="FREQ=SECONDLY is not allowed").wait_for()
+    raw.fill("FREQ=MONTHLY;BYMONTHDAY=31")
+    adv.locator(".error-text", has_text="Use BYMONTHDAY=-1").wait_for()
+
+    # A rule the builder can express shows up there; the raw text is kept as typed.
+    raw.fill("freq=monthly;byday=-1fr;byhour=20;byminute=0")
+    wait_summary(page, "Monthly on the last Friday at 20:00")
+    assert adv.locator(".error-text").inner_text() == "" and raw.get_attribute("aria-invalid") is None
+    assert sched.locator(".sched-row select").input_value() == "monthlast"
+    assert "last Friday" in sched.locator(".sched-row select option:checked").inner_text()
+    assert raw.input_value() == "freq=monthly;byday=-1fr;byhour=20;byminute=0"
+
+    # One it can't express shows as "Custom rule", untouched, with the raw view open.
+    rule = "FREQ=MINUTELY;INTERVAL=5;BYHOUR=9"
+    raw.fill(rule)
+    wait_summary(page, "Custom rule: FREQ=MINUTELY;INTERVAL=5;BYHOUR=9")
+    assert sched.locator(".sched-row select").input_value() == "rule"
+    assert sched.locator(".sched-builder").is_hidden() and raw.input_value() == rule
+    sched.get_by_label("Time zone").select_option("Asia/Tokyo")  # other edits don't flatten it
+    wait_summary(page, "(Asia/Tokyo)")
+    assert raw.input_value() == rule
+    # Picking a preset replaces it, and the raw view follows.
+    sched.locator(".sched-row select").select_option("daily")
+    wait_summary(page, "Every day at")
+    assert raw.input_value().startswith("FREQ=DAILY;BYHOUR=")
+
+
+def test_schedule_preview_lists_next_occurrences_in_the_zone(server, page):
+    sched = open_schedule(page, server)
+    sched.locator(".sched-adv summary").click()
+    sched.get_by_label("Recurrence rule", exact=False).fill("FREQ=DAILY;BYHOUR=9;BYMINUTE=0")
+    sched.get_by_label("Time zone").select_option("America/New_York")
+    wait_summary(page, "Every day at 09:00 (America/New_York)")
+    items = sched.locator(".sched-next li time")
+    assert items.count() == 5
+    datetimes = [items.nth(i).get_attribute("datetime") for i in range(5)]
+    assert all(d[11:16] == "09:00" and d[16:] in ("-05:00", "-04:00") for d in datetimes), datetimes
+    shown = items.first.inner_text()
+    assert "09:00" in shown or "9:00" in shown
+
+
+@pytest.mark.parametrize(("width", "height"), [(320, 568), (390, 664)], ids=["320", "390"])
+def test_phone_schedule_editor_fits_and_is_tappable(server, browser, width, height):
+    page = phone_page(browser, width, height)
+    try:
+        sched = open_schedule(page, server)
+        sched.locator(".sched-row select").select_option("custom")
+        sched.locator(".sched-adv summary").click()
+        assert page.evaluate("document.documentElement.scrollWidth") == width
+        assert page.evaluate(_CLIPPED_SELECTS.replace("querySelectorAll('select')", "querySelectorAll('.sched select')")) == []
+        for chip in sched.locator(".chip").all():
+            box = chip.bounding_box()
+            assert box["width"] >= 30 and box["height"] >= 30
+            assert box["x"] >= 0 and box["x"] + box["width"] <= width
+        sizes = page.evaluate("""() => [...document.querySelectorAll('.sched input, .sched select')]
+            .filter(el => el.offsetParent).map(el => parseFloat(getComputedStyle(el).fontSize))""")
+        assert sizes and min(sizes) >= 16
+    finally:
+        page.context.close()
+
+
+def test_lobby_schedule_round_trips_and_the_jury_follows_it(server, browser):
+    rule = "FREQ=MONTHLY;BYSETPOS=4;BYDAY=TH;BYHOUR=9;BYMINUTE=0"  # as the server stores it
+    host, bob = create_game(server, config={"jury": {"enabled": True}, "ap": {"rrule": rule, "timezone": "Asia/Jerusalem"}})
+    for who, editable in ((host, True), (bob, False)):
+        page = browser.new_context(viewport={"width": 1280, "height": 900}).new_page()
+        try:
+            open_as(page, server, who)
+            page.wait_for_selector(".sched-next li")
+            preset = page.locator(".sched-row select")
+            assert preset.input_value() == "monthnth" and "4th Thursday" in page.locator(".sched-row select option:checked").inner_text()
+            assert preset.is_enabled() == editable
+            assert raw_rule(page) == rule
+            note = page.locator(".jury-note")
+            assert "Jury cycles close on the same schedule" in note.inner_text()
+            assert "Monthly on the fourth Thursday at 09:00 (Asia/Jerusalem)" in note.inner_text()
+            assert "Jury cycle (seconds)" not in visible_text(page, "#app")
+        finally:
+            page.context.close()
+
+
+@pytest.mark.parametrize(("date", "day_preset", "last_day"), [
+    ("2026-11-26T12:00:00Z", "Monthly on the 26th", False),
+    ("2026-11-29T12:00:00Z", None, False),  # the 29th isn't in every month: not offered
+    ("2026-11-30T12:00:00Z", None, True),  # the last day of November: offered as "the last day"
+    ("2026-12-31T12:00:00Z", None, True),
+])
+def test_monthly_presets_never_skip_a_month(server, browser, date, day_preset, last_day):
+    page = browser.new_context(timezone_id="UTC").new_page()
+    try:
+        page.clock.set_fixed_time(date)
+        sched = open_schedule(page, server)
+        sched.get_by_label("Time zone").select_option("UTC")
+        wait_summary(page, "(UTC)")
+        labels = sched.locator(".sched-row select option").all_inner_texts()
+        monthly_days = [t for t in labels if t.startswith("Monthly on the ") and t[15:16].isdigit()]
+        assert monthly_days == ([day_preset] if day_preset else []), labels
+        assert ("Monthly on the last day" in labels) == last_day
+        assert not any("5th" in t for t in labels)
+        if last_day:
+            sched.locator(".sched-row select").select_option("monthlastday")
+            wait_summary(page, "Monthly on the last day")
+            assert raw_rule(page).startswith("FREQ=MONTHLY;BYMONTHDAY=-1;")
+            assert sched.locator(".sched-next li").count() == 5
     finally:
         page.context.close()

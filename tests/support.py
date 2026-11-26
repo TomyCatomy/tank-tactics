@@ -14,7 +14,7 @@ from tank_tactics.config import GameConfig, ServerConfig
 from tank_tactics.service import GameService
 from tank_tactics.store import Store
 
-T0 = 1_000_000.0
+T0 = 999_960.0  # a round minute: scheduled events (AP ticks, the time limit) fall on whole minutes
 DAY = 86_400
 
 

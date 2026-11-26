@@ -146,6 +146,45 @@ details.adv > summary { cursor: pointer; min-height: var(--tap); display: flex; 
 .config-grid label.check { display: flex; align-items: center; gap: 10px; min-height: var(--tap); }
 .config-grid label.check > span { margin: 0; color: var(--text); font-size: .95rem; }
 .config-grid .hint { font-size: .75rem; color: var(--muted); margin-top: 2px; }
+.config-grid > .wide { grid-column: 1 / -1; }
+.jury-note { margin-top: -6px; }
+
+/* AP schedule editor: presets, builder, raw RRULE, zone, summary and preview */
+.sched { border: 1px solid var(--line); border-radius: 8px; padding: 12px; background: var(--bg-2); min-width: 0; }
+.sched .sched-title > span { display: block; font-size: .85rem; color: var(--muted); margin-bottom: 4px; }
+.sched .sched-tz > span { display: block; font-size: .85rem; color: var(--muted); margin-bottom: 4px; }
+.sched-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.sched-row > select { flex: 1 1 220px; min-width: 0; }
+.sched-inline { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.sched-inline > span, .sched-inline > label { color: var(--muted); font-size: .9rem; white-space: nowrap; }
+.config-grid .sched label.sched-inline > span, .config-grid .sched label.radio > span { display: inline; margin: 0; font-size: .9rem; }
+.sched-inline input[type=time] { width: 8.5em; }
+.sched-inline input[type=number] { width: 5em; }
+.sched-inline select { width: auto; flex: 1 1 8em; min-width: 0; }
+.sched [hidden] { display: none !important; }
+.sched fieldset { border: 1px solid var(--line); border-radius: 8px; margin: 0; padding: 8px 10px 10px; min-width: 0; }
+.sched fieldset > * + * { margin-top: 8px; }
+.sched legend { color: var(--muted); font-size: .85rem; padding: 0 4px; }
+.sched-month { border-style: dashed; }
+.sched label.radio { display: flex; align-items: center; gap: 8px; min-height: 36px; flex-wrap: wrap; }
+.sched label.radio input[type=radio] { width: 20px; height: 20px; min-height: 0; margin: 0; accent-color: var(--accent); flex: none; }
+.sched label.radio input[type=number] { width: 5em; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { min-width: 40px; min-height: 40px; padding: 0; border-radius: 999px; font-weight: 700; }
+.chip[aria-pressed=true] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.sched-adv > summary { cursor: pointer; min-height: 36px; display: flex; align-items: center; color: var(--muted); font-size: .9rem; }
+.sched-adv[open] > summary { margin-bottom: 6px; }
+.sched-adv label > span { display: block; font-size: .8rem; color: var(--muted); margin-bottom: 4px; }
+.sched .mono { font-family: ui-monospace, monospace; }
+.sched-adv .error-text:empty { display: none; }
+.sched-preview { border-top: 1px solid var(--line); padding-top: 10px; }
+.sched-summary { margin: 0 0 6px; overflow-wrap: anywhere; }
+.sched-summary.bad { color: var(--danger); }
+.sched-preview .notice { margin: 0 0 6px; }
+.sched-next { margin: 4px 0 0; padding-left: 1.4em; font-size: .88rem; }
+.sched-next li { padding: 2px 0; }
+.sched-next .badge { margin-left: 6px; }
+.sched-line { margin-top: 4px; }
 
 /* Game layout */
 .game { display: grid; gap: 16px; grid-template-columns: 1fr; }

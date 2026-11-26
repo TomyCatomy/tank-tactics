@@ -20,10 +20,15 @@ Where the spec left room for interpretation, this is what I chose and why.
    shot, so nobody gets loot. The removed player becomes a spectator, or a juror if the
    jury is on, and keeps their token so they can still watch.
 5. **Jury votes for a player who dies before the cycle closes** don't count.
-6. **Jury cycles** start when the game starts and run on their own clock. If an AP
-   tick and a jury close fall at the same instant, the tick is applied first.
-7. **Time-limit ending:** AP ticks due exactly at the deadline are not applied (the
-   game is already over).
+6. **Jury cycles** start when the game starts and close on every occurrence of the AP
+   schedule (there is no separate jury interval any more). At each occurrence the AP
+   tick is applied first, then the cycle closes, so a jury award can run into `ap.cap`
+   after that tick.
+7. **Time-limit ending:** AP ticks (and jury closes) due exactly at the deadline are
+   not applied (the game is already over). The deadline is `max_duration_seconds` after
+   the start, rounded up to the next round minute like every scheduled event (see 35),
+   so a tick on that minute is the one that doesn't happen. With debug fast ticks the
+   deadline is exact.
 8. **Simultaneous death** (safety rule) cannot happen with single shots. The only
    multi-death path is host removal, which removes one tank at a time.
 9. **Dead players and chat:** "keep access to the public channel only" is applied
@@ -62,9 +67,98 @@ Where the spec left room for interpretation, this is what I chose and why.
 16. `Game.winner_player_id` became `winner_ids` (a list), because the rules allow
     shared wins. `end_reason` was added.
 17. Player tokens are stored as SHA-256 hashes.
-18. **Very long downtime:** catch-up applies every whole interval. When more than 50 AP
-    ticks are pending in a row, they are logged as one `ap_tick` entry with
-    `details.ticks = n` instead of n separate entries.
+18. **Very long downtime:** catch-up applies every schedule occurrence that has passed.
+    When more than 50 AP ticks are pending in a row, they are logged as one `ap_tick`
+    entry with `details.ticks = n` (at the time of the last one) instead of n separate
+    entries. Occurrences are counted without listing them: plain intervals by
+    arithmetic, other rules by lazy iteration from cached checkpoints. With the jury on,
+    every tick is followed by a jury close, so ticks are never collapsed (as before).
+
+## AP schedule (recurrence rules)
+
+26. **The schedule is an RFC 5545 RRULE body** (`ap.rrule`) in an IANA zone
+    (`ap.timezone`), with DTSTART = the moment the game starts, in that zone, floored to
+    the minute (see 35). The default is `FREQ=DAILY` in UTC: one AP a day, at the start's
+    hh:mm:00, which is the old 24-hour interval to within a minute. The web client starts
+    new games in the browser's zone; the server default stays UTC (it has no better
+    source). In a zone with DST, plain `FREQ=DAILY` keeps the start's wall-clock time, so
+    one day a year is 23 hours and one 25.
+27. **What a rule may contain.** No `DTSTART` (the game start supplies it), no `COUNT` or
+    `UNTIL`: the game ends the schedule, and a schedule that stopped would leave a game
+    with no more AP. So the builder has no end-condition section. Also refused: unknown
+    parts (including `X-` and dateutil's `BYEASTER`), `BYWEEKNO` and `BYYEARDAY` (yearly
+    concepts, see 28), repeated parts, numbered `BYDAY` outside monthly rules, `BYSETPOS`
+    alone, and any `BYSECOND` but 0. dateutil (`rrulestr`) parses the rule and the game
+    adds these checks on top. The rule is stored in dateutil's canonical spelling, so an
+    optional `RRULE:` prefix is dropped and parts may be reordered (`BYDAY=TH,MO` becomes
+    `BYDAY=MO,TH`).
+28. **Cadence: at most once a minute, at least once every calendar month.**
+    - *Minimum:* ticks are on round minutes (35), so at most one a minute.
+      `FREQ=SECONDLY` is refused for new games, even on `ALLOW_DEBUG` servers. The only
+      faster ticks are `debug.fast_ticks` (31), which are unchanged.
+    - *Maximum:* the schedule has to fire in every calendar month, and never more than 35
+      days apart (plus an hour for a DST change in between). Monthly by day of the month
+      (1-28), the last day (`BYMONTHDAY=-1`), the nth weekday (`BYDAY=TH;BYSETPOS=4` or
+      `4TH`) and the last weekday (`-1`) are all fine; "the last Thursday" can be 35 days
+      apart. Refused: `FREQ=YEARLY`, `FREQ=MONTHLY` with `INTERVAL` above 1, and anything
+      that skips a month, such as `BYMONTHDAY=29`/`30`/`31`, a fifth weekday, `BYMONTH`
+      leaving months out, or `FREQ=WEEKLY;INTERVAL=5` (35 days, but it can jump a whole
+      month). The error suggests `BYMONTHDAY=-1` or `-1<weekday>` where those fit. A
+      monthly rule must say which day (`BYMONTHDAY` or `BYDAY`): plain `FREQ=MONTHLY`
+      would take the start date's day and skip months for a game started on the 31st.
+      Plain intervals can be at most 28 days (672 hours), the longest step that never
+      skips February.
+    - *How it's checked:* the rule is expanded from three reference starts (midnight on
+      1 January, mid-July mid-day, and the last minute of a 31st) for 26 months. Every
+      whole calendar month in that window needs a tick, and no gap (including the wait
+      for the first tick) can exceed 35 days. A rule with so many ticks a day that the
+      sample (3,000) runs out first is accepted only if it has no month-level parts
+      (`BYMONTH`, `BYMONTHDAY`, `BYSETPOS`, numbered `BYDAY`), because then every month
+      looks alike. Rules that never fire are refused. dateutil has no search bound for
+      those, so common cases are caught statically and the rest under a 0.5 s budget.
+    - *The lobby editor:* the presets and builder only offer rules that pass: monthly
+      every 1 month on day 1-28, the last day, the 1st-4th or last weekday; at most every
+      4 weeks, 28 days or 672 hours.
+29. **DST.** Occurrences are wall-clock times in the zone. A time that doesn't exist (in
+    a spring-forward gap) happens later by the gap's length (02:30 becomes 03:30), as
+    RFC 5545 says. A repeated time (fall-back) happens once, at its first occurrence.
+    Two occurrences landing on the same instant count once.
+30. **Two departures from RFC 5545, for intuitive rules.** (a) Plain sub-daily intervals
+    (`FREQ=HOURLY;INTERVAL=6`, `FREQ=MINUTELY;INTERVAL=15`, with no BY parts) count real
+    elapsed time from the start minute, so DST never makes one longer or shorter. (b) Time
+    parts finer than the finest one given default to zero instead of to the start's:
+    `BYHOUR=9` means 09:00:00, not 09:<start minute>:<start second>. This doesn't apply
+    to the part `FREQ` repeats (`FREQ=MINUTELY;BYHOUR=9` is every minute from 09:00 to
+    09:59). Round minutes (35) are a third rule on top.
+31. **`debug.fast_ticks`** replaces the rule with `FREQ=SECONDLY;INTERVAL=<tick_seconds>`
+    in UTC for both AP and jury, counted from the exact start (no round minutes), and the
+    time limit stays exact. The configured rule is kept and shown alongside. This is the
+    only way to get ticks more often than once a minute.
+32. **No backwards compatibility** (the owner's call). `ap.interval_seconds` and
+    `jury.interval_seconds` are gone with no conversion: a request that sends them gets
+    the usual unknown-field 400, and a game stored with them loads with the default
+    schedule (`from_stored` drops removed fields), so a daily game keeps ticking daily,
+    on the start's minute.
+33. **Preview.** `POST /api/schedule/preview` validates exactly as the lobby does and lists
+    the next 5 occurrences if a game started now, with local time, UTC offset and a
+    `dst_shift` flag (the offset differs from the previous occurrence's). The client uses
+    it for the summary, the preview and raw-rule errors. The client only parses and writes
+    rules (with rrule.js, vendored in `public/vendor/`) to map them to the presets and
+    builder; validation, summaries and occurrences all come from the server. It is rate limited per client IP.
+34. **Lobby editor round trip.** The rule string is the source of truth. A rule the presets
+    or builder can express exactly is shown there (e.g. `BYDAY=-1FR` shows as "Monthly,
+    last Friday"), and the stored text isn't changed until the host edits it through
+    them (the builder then writes `BYDAY=FR;BYSETPOS=-1`). Anything else shows as "Custom
+    rule" and is never rewritten. Preset labels come from today's date in the chosen zone,
+    or from the rule's own weekday or day when it has them.
+
+35. **Round minutes.** Every scheduled event happens on a whole minute (second 0): AP
+    ticks, jury closes (they follow the same schedule) and the time limit. DTSTART is the
+    game start floored to the minute, `BYSECOND` is implicitly 0, and only occurrences
+    strictly after the real start count. So plain `FREQ=DAILY` from a 14:37:23 start
+    ticks at 14:37:00 every day, the first one 23 seconds short of a day. The deadline is
+    rounded up, never down, so a game is never shorter than its limit. The exceptions are
+    debug fast ticks (31), whose timing is exact.
 
 ## Not built (optional or out of scope for v1)
 

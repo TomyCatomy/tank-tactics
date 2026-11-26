@@ -33,7 +33,7 @@ from pathlib import Path
 from typing import Callable, Iterator
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from playtest import ROOT, YEAR, Server  # noqa: E402
+from playtest import ROOT, Server  # noqa: E402
 
 import httpx  # noqa: E402
 
@@ -228,15 +228,16 @@ class Api:
 
 
 def make_fixtures(api: Api) -> dict:
-    quiet = {"ap": {"interval_seconds": YEAR}}
+    # No AP ticks or jury closes while screens are captured.
+    quiet = {"ap": {"rrule": "FREQ=MONTHLY;BYMONTHDAY=1"}}
     fx: dict = {}
     fx["lobby"] = api.lobby(["Hosty", "Guesty"], quiet)
     api.post(fx["lobby"][1], "chat", {"text": "hi, ready when you are"})
     fx["closed"] = api.lobby(["Hosty", "Guesty"], quiet)
     api.post(fx["closed"][0], "close")
 
-    cfg = {"board": {"size": 8}, "start": {"hp": 3, "ap": 6, "action_range": 12}, "ap": {"interval_seconds": YEAR},
-           "jury": {"enabled": True, "interval_seconds": YEAR}}
+    cfg = {"board": {"size": 8}, "start": {"hp": 3, "ap": 6, "action_range": 12}, **quiet,
+           "jury": {"enabled": True}}
     g = fx["game"] = api.started(["Ana", "Ben", "Cat", "Dan"], cfg)
     for _ in range(3):
         api.post(g[0], "action", {"type": "shoot", "target_id": g[3]["player_id"]})

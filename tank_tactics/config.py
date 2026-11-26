@@ -16,6 +16,8 @@ from urllib.parse import urlparse
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from . import recurrence
+
 DAY = 86_400
 _DISCORD_HOSTS = {"discord.com", "discordapp.com", "ptb.discord.com", "canary.discord.com"}
 
@@ -61,8 +63,42 @@ class StartConfig(_Section):
 
 
 class ApConfig(_Section):
-    interval_seconds: int = Field(DAY, ge=1, le=365 * DAY, description="+1 AP to every living tank per interval.")
+    """When AP arrives: +1 AP to every living tank on each occurrence of an RFC 5545
+    recurrence rule, evaluated in ``timezone`` from the moment the game starts (DTSTART).
+    The jury, when enabled, closes a cycle on the same occurrences."""
+
+    rrule: str = Field(
+        recurrence.DEFAULT_RULE,
+        description="RRULE body, e.g. FREQ=DAILY;BYHOUR=9;BYMINUTE=0. No DTSTART, COUNT or UNTIL. "
+        "The default, FREQ=DAILY, is every 24 hours from the start.",
+    )
+    timezone: str = Field(recurrence.DEFAULT_TIMEZONE, description="IANA time zone the rule is evaluated in.")
     cap: int | None = Field(None, ge=1, le=1_000_000, description="Max AP a tank can hold. None = no cap.")
+
+    @field_validator("rrule")
+    @classmethod
+    def _rule(cls, v: str) -> str:
+        try:
+            return recurrence.normalize_rule(v)
+        except recurrence.RecurrenceError as e:
+            raise ValueError(str(e)) from None
+
+    @field_validator("timezone")
+    @classmethod
+    def _zone(cls, v: str) -> str:
+        try:
+            return recurrence.check_timezone(v)
+        except recurrence.RecurrenceError as e:
+            raise ValueError(str(e)) from None
+
+    @model_validator(mode="after")
+    def _fires(self) -> Self:
+        # Round minutes, at most a minute apart, every calendar month (see recurrence.validate).
+        try:
+            recurrence.validate(self.rrule, self.timezone)
+        except recurrence.RecurrenceError as e:
+            raise ValueError(f"rrule: {e}") from None
+        return self
 
 
 class ActionsConfig(_Section):
@@ -75,8 +111,7 @@ class ActionsConfig(_Section):
 class JuryConfig(_Section):
     """The optional jury of dead players."""
 
-    enabled: bool = False
-    interval_seconds: int = Field(DAY, ge=1, le=365 * DAY)
+    enabled: bool = False  # cycles close on every AP occurrence (see ApConfig)
     tie_rule: Literal["all", "random"] = Field("all", description="Ties: all tied get +1 AP, or one at random.")
     votes_public: bool = True
 
@@ -93,7 +128,8 @@ class PlayersConfig(_Section):
 
 
 class DebugConfig(_Section):
-    """Testing aid: AP ticks and jury cycles happen every ``tick_seconds`` instead."""
+    """Testing aid: AP ticks and jury cycles happen every ``tick_seconds`` instead of on
+    the ``ap.rrule`` schedule (as if it were FREQ=SECONDLY;INTERVAL=tick_seconds in UTC)."""
 
     fast_ticks: bool = False
     tick_seconds: int = Field(10, ge=1, le=3600)
@@ -179,14 +215,12 @@ class GameConfig(_Section):
     # -- derived values -----------------------------------------------------------
 
     @property
-    def ap_interval(self) -> int:
-        """Effective seconds between AP ticks (honours debug.fast_ticks)."""
-        return self.debug.tick_seconds if self.debug.fast_ticks else self.ap.interval_seconds
-
-    @property
-    def jury_interval(self) -> int:
-        """Effective seconds per jury cycle (honours debug.fast_ticks)."""
-        return self.debug.tick_seconds if self.debug.fast_ticks else self.jury.interval_seconds
+    def effective_schedule(self) -> tuple[str, str]:
+        """(rule, time zone) that AP ticks and jury closes actually follow. With
+        debug.fast_ticks it is a plain ``tick_seconds`` interval in UTC instead."""
+        if self.debug.fast_ticks:
+            return recurrence.debug_rule(self.debug.tick_seconds), recurrence.DEFAULT_TIMEZONE
+        return self.ap.rrule, self.ap.timezone
 
 
 def _deep_merge(base: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
@@ -214,6 +248,8 @@ def _describe(e: ValidationError) -> str:
     for err in e.errors():
         field = ".".join(str(x) for x in err["loc"])
         msg = err["msg"].removeprefix("Value error, ")
+        if field == "ap" and msg.startswith("rrule: "):  # from ApConfig's whole-model check
+            field, msg = "ap.rrule", msg.removeprefix("rrule: ")
         parts.append(f"{field}: {msg}" if field else msg)
     return "; ".join(parts)
 

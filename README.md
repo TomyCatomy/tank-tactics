@@ -64,7 +64,7 @@ Open the page, create a game, and share the invite link. Each player gets a pers
 
 To try a game quickly, start the server with `ALLOW_DEBUG=true` and tick
 **Debug: fast ticks** when creating it: AP then arrives every
-`debug.tick_seconds` (10 s by default) instead of every 24 hours. Two browser windows
+`debug.tick_seconds` (10 s by default) instead of on the game's schedule (every 24 hours by default). Two browser windows
 (one private) are enough to play against yourself.
 
 ### Server settings (environment variables)
@@ -122,20 +122,20 @@ for example `{"jury": {"enabled": true}}`, and are validated through the same mo
 | `board.min_size` / `board.size_multiplier` | `10` / `3` | |
 | `board.wreckage_blocks_tile` | `false` | |
 | `start.hp` / `start.ap` / `start.action_range` | `3` / `1` / `2` | every tank's starting stats |
-| `ap.interval_seconds` | `86400` | +1 AP to every living tank per interval |
+| `ap.rrule` | `"FREQ=DAILY"` | +1 AP to every living tank on each occurrence of this [RFC 5545](https://www.rfc-editor.org/rfc/rfc5545#section-3.3.10) rule body, e.g. `FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR;BYHOUR=9;BYMINUTE=0`. DTSTART is the game start; no `DTSTART`, `COUNT` or `UNTIL`. Ticks are on round minutes, at most once a minute (no `FREQ=SECONDLY`), and at least once in every calendar month (no `FREQ=YEARLY`, no day 29-31; use `BYMONTHDAY=-1` for the last day). The default is daily at the start's hh:mm. |
+| `ap.timezone` | `"UTC"` | IANA zone the rule runs in (DST-aware); the web client defaults new games to the browser's zone |
 | `ap.cap` | `null` | no cap |
 | `actions.range_upgrade_cost` | `3` | |
 | `actions.max_range` | `null` | unlimited |
 | `actions.allow_give_hp` | `true` | |
 | `actions.loot_on_kill` | `true` | killer takes the victim's AP |
-| `jury.enabled` | `false` | |
-| `jury.interval_seconds` | `86400` | |
+| `jury.enabled` | `false` | a cycle closes on each AP occurrence, right after its tick |
 | `jury.tie_rule` | `"all"` | or `"random"` |
 | `jury.votes_public` | `true` | |
 | `fog_of_war` | `"off"` | or `"alliance"` |
-| `max_duration_seconds` | `null` | optional time limit |
+| `max_duration_seconds` | `null` | optional time limit; the game ends on the next round minute after it |
 | `players.minimum` / `players.maximum` | `2` / `64` | a game never starts with < 2 |
-| `debug.fast_ticks` / `debug.tick_seconds` | `false` / `10` | testing aid (needs `ALLOW_DEBUG=true`) |
+| `debug.fast_ticks` / `debug.tick_seconds` | `false` / `10` | testing aid (needs `ALLOW_DEBUG=true`): replaces the schedule with `FREQ=SECONDLY;INTERVAL=tick_seconds` (UTC) for AP and jury |
 | `notifications.discord_webhook_url` | `null` | posts public events only |
 
 ## Tests
@@ -165,7 +165,7 @@ python scripts/simulate.py --players 12 --runs 200 --quiet  # aggregate stats on
 ```
 
 Bots with four personalities (aggressive, hoarder, diplomat, coward) play a full game on
-the real rules engine with a virtual clock (AP interval = 1 second), so it finishes
+the real rules engine with a virtual clock (debug fast ticks: one AP tick per second), so it finishes
 instantly. Use `--runs` to compare win rates when tuning the config.
 
 ## API (summary)
@@ -175,7 +175,8 @@ All state-changing requests use `Authorization: Bearer <player token>`.
 
 | Method & path | Body | |
 |---|---|---|
-| `GET /api/defaults` | | default config |
+| `GET /api/defaults` | | default config, `allow_debug`, and the accepted `timezones` |
+| `POST /api/schedule/preview` | `{rrule, timezone}` | validate an AP schedule as the lobby would; `{rrule, timezone, summary, occurrences: [{ts, local, utc_offset, dst_shift}]}` (next 5 from now), or 400 `invalid_schedule` |
 | `POST /api/games` | `{name, config?}` | create; returns `{game_id, player_id, token}` |
 | `GET /api/games/{id}` | | public lobby info for the invite page |
 | `POST /api/games/{id}/join` | `{name}` | lobby only |
@@ -215,5 +216,6 @@ Errors come back as `{"error": {"code", "message"}}` with a 4xx status.
   live state. If two players shoot the same last-HP tank at once, one succeeds and the
   other gets a clean `invalid_target` error.
 - **Ticks survive restarts.** `last_ap_tick_at` and `last_jury_cycle_at` are stored.
-  On boot the scheduler applies every whole interval that elapsed, in chronological
-  order with jury closes and the time limit.
+  On boot the scheduler applies every schedule occurrence that passed, in chronological
+  order with jury closes and the time limit. Long gaps are counted without listing every
+  occurrence, and more than 50 ticks in a row are logged as one entry.

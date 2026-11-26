@@ -3,19 +3,35 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 
+from ... import recurrence
 from ...config import GameConfig
+from ...service import ServiceError
 from ..deps import OptionalUserDep, PlayerDep, ServiceDep
-from ..schemas import CreateGameRequest, Credentials, GameInfo, JoinRequest
+from ..schemas import CreateGameRequest, Credentials, GameInfo, JoinRequest, SchedulePreview, SchedulePreviewRequest
 
 router = APIRouter(prefix="/api", tags=["games"])
 
 
 @router.get("/defaults")
 def defaults(service: ServiceDep) -> dict[str, Any]:
-    """The default game rules (what the create form starts from)."""
-    return {"config": GameConfig().model_dump(), "allow_debug": service.cfg.allow_debug}
+    """The default game rules (what the create form starts from), and the time zones
+    the AP schedule accepts."""
+    return {"config": GameConfig().model_dump(), "allow_debug": service.cfg.allow_debug,
+            "timezones": recurrence.timezones()}
+
+
+@router.post("/schedule/preview")
+def schedule_preview(body: SchedulePreviewRequest, service: ServiceDep, request: Request) -> SchedulePreview:
+    """Check an AP schedule (``ap.rrule`` + ``ap.timezone``) the way the lobby will, and
+    return a human-readable summary and the next 5 occurrences if a game started now
+    (all on round minutes).
+    An invalid rule is a 400 with code ``invalid_schedule`` and a message to show inline."""
+    client = request.client.host if request.client else "unknown"
+    if not service.preview_limiter.allow(client):
+        raise ServiceError("rate_limited", "Slow down: too many schedule previews.", 429)
+    return SchedulePreview(**service.preview_schedule(body.rrule, body.timezone))
 
 
 @router.post("/games", status_code=201)

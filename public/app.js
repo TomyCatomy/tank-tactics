@@ -232,8 +232,9 @@
   const FIELDS = [
     { k: 'fog_of_war', label: 'Fog of war', type: 'select', main: true, wide: true,
       options: [['off', 'Off: everything public'], ['alliance', 'Alliance: hide AP counts & gifts']] },
-    { k: 'jury.enabled', label: 'Jury of dead players (+1 AP daily vote)', type: 'bool', main: true },
-    { k: 'ap.interval_seconds', label: 'AP interval (seconds)', type: 'int', main: true, hint: '86400 = 24 hours' },
+    { k: 'ap.schedule', type: 'schedule', main: true }, // writes ap.rrule + ap.timezone (see scheduleEditor)
+    { k: 'jury.enabled', label: 'Jury of dead players (vote for +1 AP)', type: 'bool', main: true },
+    { k: 'jury.schedule', type: 'jury-note', main: true },
     { k: 'debug.fast_ticks', label: 'Debug: fast ticks (for testing)', type: 'bool', main: true },
     { k: 'debug.local_seats', label: 'Debug: play several players from one page', type: 'bool', main: true },
     { k: 'debug.tick_seconds', label: 'Debug tick length (seconds)', type: 'int' },
@@ -249,7 +250,6 @@
     { k: 'actions.allow_give_hp', label: 'Allow giving HP', type: 'bool' },
     { k: 'actions.loot_on_kill', label: 'Killer loots victim’s AP', type: 'bool' },
     { k: 'board.wreckage_blocks_tile', label: 'Wrecks block tiles', type: 'bool' },
-    { k: 'jury.interval_seconds', label: 'Jury cycle (seconds)', type: 'int' },
     { k: 'jury.tie_rule', label: 'Jury tie rule', type: 'select', options: [['all', 'All tied get +1'], ['random', 'One random tied player']] },
     { k: 'jury.votes_public', label: 'Jury votes are public', type: 'bool' },
     { k: 'max_duration_seconds', label: 'Time limit (seconds)', type: 'int', nullable: true, hint: 'Blank = none' },
@@ -271,7 +271,11 @@
     // Hidden fields are also left out of getValues, so saving keeps their current value.
     const fields = allowDebug ? FIELDS : FIELDS.filter((f) => !f.k.startsWith('debug.'));
     const inputs = {};
+    const schedule = scheduleEditor(values.ap, { editable, debug: values.debug });
+    const juryNote = h('div', { class: 'wide jury-note muted small', role: 'note' });
     const field = (f) => {
+      if (f.type === 'schedule') return schedule;
+      if (f.type === 'jury-note') return juryNote;
       const v = getPath(values, f.k);
       let input;
       if (f.type === 'bool') {
@@ -297,9 +301,29 @@
       h('div', { class: 'config-grid' }, fields.filter((f) => !f.main).map(field)));
     const root = h('div', { class: 'stack' }, main, adv);
     if (onDirty) root.addEventListener('input', onDirty);
+
+    // The jury closes a cycle on every AP tick, so its note repeats the schedule summary.
+    const juryOn = () => !!inputs['jury.enabled']?.checked;
+    const showJuryNote = () => {
+      juryNote.hidden = !juryOn();
+      fill(juryNote, 'Jury cycles close on the same schedule as AP: ', h('b', {}, schedule.summaryText()));
+    };
+    schedule.onSummary = showJuryNote;
+    inputs['jury.enabled']?.addEventListener('change', showJuryNote);
+    showJuryNote();
+    // Debug fast ticks replace the schedule; say so next to it.
+    const debugChanged = () => schedule.setDebug({
+      fast_ticks: inputs['debug.fast_ticks'] ? inputs['debug.fast_ticks'].checked : values.debug?.fast_ticks,
+      tick_seconds: inputs['debug.tick_seconds'] ? Number(inputs['debug.tick_seconds'].value) : values.debug?.tick_seconds,
+    });
+    inputs['debug.fast_ticks']?.addEventListener('change', debugChanged);
+    inputs['debug.tick_seconds']?.addEventListener('input', debugChanged);
+
     root.getValues = () => {
       const out = {};
       for (const f of fields) {
+        if (f.type === 'schedule') { Object.assign((out.ap ??= {}), schedule.getValues()); continue; }
+        if (f.type === 'jury-note') continue;
         const el = inputs[f.k];
         let v;
         if (f.type === 'bool') v = el.checked;
@@ -310,6 +334,473 @@
       }
       return out;
     };
+    return root;
+  }
+
+  // ---------------------------------------------------------------------------
+  // AP schedule editor (RFC 5545 RRULE + IANA time zone)
+  // ---------------------------------------------------------------------------
+  // Three layers over one rule string, like a calendar's "Custom recurrence":
+  //  1. presets (derived from today's date in the chosen zone, plus a time of day),
+  //  2. "Custom…": a structured builder (repeat every N hours/days/weeks/months, weekday
+  //     chips, monthly by day-of-month or nth/last weekday, time of day),
+  //  3. "Advanced": the raw RRULE, validated live by the server.
+  // The rule string is the source of truth. A rule a preset or the builder can express
+  // is shown there; anything else shows as "Custom rule" and is never rewritten unless
+  // the host changes it. Rules are parsed and written with rrule.js (public/vendor); the
+  // server validates, summarises and previews them (POST /api/schedule/preview).
+  const RRule = window.rrule.RRule;
+  const WEEKDAYS = ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU'];
+  const WD_LONG = { MO: 'Monday', TU: 'Tuesday', WE: 'Wednesday', TH: 'Thursday', FR: 'Friday', SA: 'Saturday', SU: 'Sunday' };
+  const WD_CHIP = { MO: 'M', TU: 'T', WE: 'W', TH: 'T', FR: 'F', SA: 'S', SU: 'S' };
+  const ORDINAL = { 1: 'first', 2: 'second', 3: 'third', 4: 'fourth', '-1': 'last' };
+  const ORD_SHORT = { 1: '1st', 2: '2nd', 3: '3rd', 4: '4th', '-1': 'last' };
+  const UNIT_FREQ = { hour: RRule.HOURLY, day: RRule.DAILY, week: RRule.WEEKLY, month: RRule.MONTHLY };
+  // The schedule must fire every calendar month (the server checks): these are the longest steps that always do.
+  const MAX_EVERY = { hour: 672, day: 28, week: 4, month: 1 };
+  const FREQ_UNIT = Object.fromEntries(Object.entries(UNIT_FREQ).map(([unit, freq]) => [freq, unit]));
+  const pad2 = (n) => String(n).padStart(2, '0');
+  const dayOrdinal = (d) => `${d}${(d % 100 >= 11 && d % 100 <= 13) ? 'th' : ({ 1: 'st', 2: 'nd', 3: 'rd' }[d % 10] || 'th')}`;
+
+  let defaultsPromise = null;
+  /** GET /api/defaults once per page (default config, allow_debug, accepted time zones). */
+  function serverDefaults() {
+    defaultsPromise ||= api('GET', '/api/defaults').catch((e) => { defaultsPromise = null; throw e; });
+    return defaultsPromise;
+  }
+
+  /** The browser's IANA zone, or null if it has none. */
+  function browserZone() {
+    try { return Intl.DateTimeFormat().resolvedOptions().timeZone || null; } catch { return null; }
+  }
+
+  /** RRULE body -> rrule.js options (only the parts it gives), or null if it doesn't parse or has no FREQ. */
+  function parseRule(text) {
+    try {
+      const o = RRule.parseString(String(text ?? '').trim().toUpperCase()); // RRULE is case-insensitive; rrule.js isn't
+      return o.freq === undefined ? null : o;
+    } catch { return null; }
+  }
+
+  /** The builder's model for parsed rule options, or null if the builder can't express it exactly. */
+  function ruleToModel(o) {
+    if (!o) return null;
+    const allowed = ['freq', 'interval', 'byhour', 'byminute', 'bysecond', 'byweekday', 'bymonthday', 'bysetpos'];
+    if (Object.keys(o).some((k) => !allowed.includes(k))) return null;
+    const list = (k) => (o[k] == null ? [] : [].concat(o[k]));
+    const one = (k) => (list(k).length === 1 ? list(k)[0] : null);
+    const days = list('byweekday'); // rrule.js Weekday objects: {weekday: 0 (MO) .. 6 (SU), n}
+    const unit = FREQ_UNIT[o.freq], every = o.interval ?? 1;
+    if (!unit || every < 1 || every > MAX_EVERY[unit]) return null;
+    if (list('bysecond').some((x) => x !== 0)) return null;
+    const m = { unit, every, days: [], monthMode: 'day', monthDay: null, nth: null, weekday: null, hour: 0, minute: one('byminute') };
+    if (m.minute === null) return null; // the builder always sets the minute
+    if (unit === 'hour') return list('byhour').length || days.length || list('bymonthday').length || list('bysetpos').length ? null : m;
+    m.hour = one('byhour');
+    if (m.hour === null) return null;
+    if (unit === 'day') return days.length || list('bymonthday').length || list('bysetpos').length ? null : m;
+    if (unit === 'week') {
+      if (!days.length || days.some((d) => d.n) || list('bymonthday').length || list('bysetpos').length) return null;
+      m.days = WEEKDAYS.filter((_, i) => days.some((d) => d.weekday === i));
+      return m.days.length === days.length ? m : null;
+    }
+    if (list('bymonthday').length) {
+      const d = one('bymonthday');
+      if (days.length || list('bysetpos').length || d === null) return null;
+      if (d === -1) return { ...m, monthMode: 'lastday' };
+      if (d < 1 || d > 28) return null; // 29-31 skip months: shown as a custom rule (and refused by the server)
+      return { ...m, monthMode: 'day', monthDay: d };
+    }
+    if (days.length !== 1 || (days[0].n && list('bysetpos').length)) return null;
+    const n = days[0].n || one('bysetpos');
+    if (![1, 2, 3, 4, -1].includes(n)) return null;
+    return { ...m, monthMode: n === -1 ? 'last' : 'nth', nth: n, weekday: WEEKDAYS[days[0].weekday] };
+  }
+
+  /** The builder's model -> its RRULE (one canonical spelling). */
+  function modelToRule(m) {
+    const o = { freq: UNIT_FREQ[m.unit] };
+    if (m.every > 1) o.interval = m.every;
+    if (m.unit === 'week') o.byweekday = m.days.map((d) => RRule[d]);
+    if (m.unit === 'month') {
+      if (m.monthMode === 'day') o.bymonthday = m.monthDay;
+      else if (m.monthMode === 'lastday') o.bymonthday = -1;
+      else { o.byweekday = [RRule[m.weekday]]; o.bysetpos = m.monthMode === 'last' ? -1 : m.nth; }
+    }
+    if (m.unit !== 'hour') o.byhour = m.hour;
+    o.byminute = m.minute;
+    return RRule.optionsToString(o).replace(/^RRULE:/, '');
+  }
+
+  /** Today's weekday, day of month and position in the month, in `tz`. */
+  function todayIn(tz) {
+    let parts;
+    try {
+      parts = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short', day: 'numeric', month: 'numeric', year: 'numeric' }).formatToParts(new Date());
+    } catch {
+      parts = new Intl.DateTimeFormat('en-US', { weekday: 'short', day: 'numeric', month: 'numeric', year: 'numeric' }).formatToParts(new Date());
+    }
+    const get = (t) => parts.find((x) => x.type === t)?.value;
+    const weekday = { Mon: 'MO', Tue: 'TU', Wed: 'WE', Thu: 'TH', Fri: 'FR', Sat: 'SA', Sun: 'SU' }[get('weekday')] || 'MO';
+    const day = Number(get('day')), month = Number(get('month')), year = Number(get('year'));
+    const inMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+    return { weekday, day, nth: Math.ceil(day / 7), isLast: day + 7 > inMonth, isLastDay: day === inMonth };
+  }
+
+  /** Which preset (if any) shows this rule. */
+  function presetOf(options, model) {
+    if (options && Object.keys(options).length === 1 && options.freq === RRule.DAILY) return 'start';
+    if (!model) return 'rule';
+    if (model.unit === 'hour') return 'hours';
+    if (model.every !== 1) return 'custom';
+    if (model.unit === 'day') return 'daily';
+    if (model.unit === 'week') return model.days.join() === 'MO,TU,WE,TH,FR' ? 'weekdays' : model.days.length === 1 ? 'weekly' : 'custom';
+    return { day: 'monthday', lastday: 'monthlastday', nth: 'monthnth', last: 'monthlast' }[model.monthMode];
+  }
+
+  /** Time zones grouped by region, so long names don't overflow a phone-width dropdown. */
+  function zoneOptions(zones, current) {
+    const groups = new Map(), loose = [];
+    for (const z of zones) {
+      const i = z.indexOf('/');
+      if (i < 0) { loose.push(z); continue; }
+      const region = z.slice(0, i);
+      if (!groups.has(region)) groups.set(region, []);
+      groups.get(region).push(z);
+    }
+    const opt = (z, text) => h('option', { value: z, selected: z === current }, text.replaceAll('_', ' '));
+    return [
+      ...loose.map((z) => opt(z, z)),
+      ...[...groups].map(([region, list]) => h('optgroup', { label: region }, list.map((z) => opt(z, z.slice(region.length + 1))))),
+    ];
+  }
+
+  /** e.g. "Fri, Nov 27, 09:00 GMT+2" in the schedule's zone (the year only when it isn't this year): one line on a phone. */
+  function fmtOccurrence(ts, tz) {
+    const d = new Date(ts * 1000);
+    try {
+      const year = d.getFullYear() !== new Date().getFullYear() ? { year: 'numeric' } : {};
+      return new Intl.DateTimeFormat([], { timeZone: tz, weekday: 'short', day: 'numeric', month: 'short', ...year,
+        hour: '2-digit', minute: '2-digit', timeZoneName: 'short' }).format(d);
+    } catch { return fmtTime(ts); }
+  }
+
+  /**
+   * The schedule part of the config form. `ap` is the config's ap section. Returns an element
+   * with getValues() -> {rrule, timezone}, summaryText(), setDebug(debug) and an onSummary hook.
+   */
+  function scheduleEditor(ap, { editable = true, debug = null } = {}) {
+    const st = {
+      rule: ap?.rrule || 'FREQ=DAILY', tz: ap?.timezone || 'UTC', summary: '', debug,
+      // Context for preset labels and builder defaults: today in the zone, overridden by the rule's own values.
+      ctx: null, model: null, preset: null, hoursEvery: 6,
+      lastTime: { hour: 9, minute: 0 }, // the time of day to reuse when switching back from an hourly schedule
+    };
+    const uid = `sched-${Math.random().toString(36).slice(2, 8)}`;
+    const dis = !editable;
+    const changed = () => root.dispatchEvent(new Event('input', { bubbles: true })); // marks the form dirty
+
+    // -- layer 1: presets + time of day
+    const presetSel = h('select', { id: `${uid}-preset`, disabled: dis, 'aria-describedby': `${uid}-summary` });
+    // No `required`/min/max checks by the browser: a hidden invalid field would silently block the create form.
+    const timeIn = h('input', { type: 'time', id: `${uid}-time`, step: 60, disabled: dis });
+    const timeLabel = h('label', { class: 'sched-inline', for: `${uid}-time` }, h('span', {}, 'at'), timeIn);
+    const hoursIn = h('input', { type: 'number', min: 1, max: MAX_EVERY.hour, inputmode: 'numeric', disabled: dis, 'aria-label': 'Hours between ticks' });
+    const minuteIn = h('input', { type: 'number', min: 0, max: 59, inputmode: 'numeric', disabled: dis, 'aria-label': 'At minute' });
+    const hoursRow = h('div', { class: 'sched-inline' }, h('span', {}, 'every'), hoursIn, h('span', {}, 'hours at minute'), minuteIn);
+
+    // -- layer 2: builder
+    const everyIn = h('input', { type: 'number', min: 1, max: MAX_EVERY.week, inputmode: 'numeric', disabled: dis, id: `${uid}-every` });
+    const unitSel = h('select', { disabled: dis, 'aria-label': 'Repeat unit' },
+      ['hour', 'day', 'week', 'month'].map((u) => h('option', { value: u }, `${u}(s)`)));
+    const chips = WEEKDAYS.map((d) => h('button', {
+      type: 'button', class: 'chip', disabled: dis, 'aria-pressed': 'false', 'aria-label': WD_LONG[d], title: WD_LONG[d], 'data-day': d,
+      onclick: () => {
+        const days = new Set(st.model.days);
+        if (days.has(d)) { if (days.size > 1) days.delete(d); } else days.add(d); // keep at least one day
+        st.model.days = WEEKDAYS.filter((x) => days.has(x));
+        fromBuilder();
+      },
+    }, WD_CHIP[d]));
+    const chipRow = h('div', { class: 'chips', role: 'group', 'aria-label': 'Repeat on' }, chips);
+    const radio = (mode) => h('input', { type: 'radio', name: `${uid}-month`, value: mode, disabled: dis });
+    const monthRadios = { day: radio('day'), lastday: radio('lastday'), nth: radio('nth'), last: radio('last') };
+    // Days 29-31 would skip months; "the last day" covers the end of every month.
+    const monthDayIn = h('input', { type: 'number', min: 1, max: 28, inputmode: 'numeric', disabled: dis, 'aria-label': 'Day of the month' });
+    const nthText = h('span'), lastText = h('span');
+    const monthBox = h('fieldset', { class: 'sched-month' }, h('legend', {}, 'Monthly on'),
+      h('label', { class: 'radio' }, monthRadios.day, h('span', {}, 'Day'), monthDayIn),
+      h('label', { class: 'radio' }, monthRadios.lastday, h('span', {}, 'The last day')),
+      h('label', { class: 'radio' }, monthRadios.nth, nthText),
+      h('label', { class: 'radio' }, monthRadios.last, lastText),
+      h('div', { class: 'hint' }, 'Days 29–31 and a fifth weekday aren’t in every month, so they aren’t offered: use the last day or the last weekday.'));
+    const bTimeIn = h('input', { type: 'time', step: 60, disabled: dis, id: `${uid}-btime` });
+    const bTimeRow = h('label', { class: 'sched-inline', for: `${uid}-btime` }, h('span', {}, 'at'), bTimeIn);
+    const bMinuteIn = h('input', { type: 'number', min: 0, max: 59, inputmode: 'numeric', disabled: dis, id: `${uid}-bmin` });
+    const bMinuteRow = h('label', { class: 'sched-inline', for: `${uid}-bmin` }, h('span', {}, 'at minute'), bMinuteIn);
+    const builder = h('fieldset', { class: 'sched-builder' }, h('legend', {}, 'Custom schedule'),
+      h('div', { class: 'sched-inline' }, h('label', { for: `${uid}-every` }, 'Repeat every'), everyIn, unitSel),
+      chipRow, monthBox, bTimeRow, bMinuteRow);
+
+    // -- layer 3: raw RRULE
+    const rawIn = h('input', {
+      type: 'text', id: `${uid}-raw`, class: 'mono', disabled: dis, spellcheck: 'false', autocapitalize: 'characters',
+      autocomplete: 'off', 'aria-describedby': `${uid}-err`, placeholder: 'FREQ=DAILY;BYHOUR=9;BYMINUTE=0',
+    });
+    const rawErr = h('div', { class: 'error-text small', id: `${uid}-err`, 'aria-live': 'polite' });
+    const advanced = h('details', { class: 'sched-adv' }, h('summary', {}, 'Advanced: RRULE'),
+      h('label', { for: `${uid}-raw` }, h('span', {}, 'Recurrence rule (RFC 5545 RRULE, without DTSTART, COUNT or UNTIL)')),
+      rawIn, rawErr,
+      h('div', { class: 'hint' }, 'The schedule starts when the game starts and runs until it ends. Ticks are on whole minutes, at most one a minute, and at least one every calendar month.'));
+
+    // -- shared: time zone, summary, next occurrences
+    const tzSel = h('select', { id: `${uid}-tz`, disabled: dis }, h('option', { value: st.tz, selected: true }, st.tz));
+    const summaryEl = h('p', { class: 'sched-summary', id: `${uid}-summary`, 'aria-live': 'polite' });
+    const debugEl = h('p', { class: 'notice small' });
+    const nextList = h('ol', { class: 'sched-next', 'aria-label': 'Next AP ticks' });
+
+    const root = h('div', { class: 'wide sched stack', role: 'group', 'aria-labelledby': `${uid}-label` },
+      h('label', { id: `${uid}-label`, for: `${uid}-preset`, class: 'sched-title' }, h('span', {}, 'AP schedule: +1 AP for every living tank')),
+      h('div', { class: 'sched-row' }, presetSel, timeLabel, hoursRow),
+      builder, advanced,
+      h('label', { for: `${uid}-tz`, class: 'sched-tz' }, h('span', {}, 'Time zone'), tzSel),
+      h('div', { class: 'sched-preview' }, summaryEl, debugEl, h('div', { class: 'muted small' }, 'Next 5 AP ticks if the game started now:'), nextList));
+
+    // -- state -> controls
+    const timeOf = (m) => `${pad2(m?.hour ?? 9)}:${pad2(m?.minute ?? 0)}`;
+    const readTime = (input, m) => {
+      const [hh, mm] = (input.value || '09:00').split(':').map(Number);
+      m.hour = Number.isFinite(hh) ? hh : 9;
+      m.minute = Number.isFinite(mm) ? mm : 0;
+    };
+    const clampInt = (input, lo, hi, dflt) => {
+      const n = Math.trunc(Number(input.value));
+      const v = Number.isFinite(n) && input.value !== '' ? Math.min(hi, Math.max(lo, n)) : dflt;
+      input.value = String(v); // show what was used (and never leave an out-of-range value in the form)
+      return v;
+    };
+
+    function presetOptions() {
+      const c = st.ctx, wd = WD_LONG[c.weekday];
+      const opts = [
+        ['start', 'Daily at the start time'],
+        ['daily', 'Every day'],
+        ['weekdays', 'Every weekday (Mon–Fri)'],
+        ['weekly', `Weekly on ${wd}`],
+      ];
+      // Never offer a day that some months don't have: from the 29th on, offer the last day instead.
+      if (c.day <= 28) opts.push(['monthday', `Monthly on the ${dayOrdinal(c.day)}`]);
+      if (c.isLastDay || st.preset === 'monthlastday') opts.push(['monthlastday', 'Monthly on the last day']);
+      if (c.nth <= 4) opts.push(['monthnth', `Monthly, ${ORD_SHORT[c.nth]} ${wd}`]);
+      if (c.isLast || st.preset === 'monthlast') opts.push(['monthlast', `Monthly, last ${wd}`]);
+      opts.push(['hours', 'Every few hours'], ['custom', 'Custom…']);
+      if (st.preset === 'rule') opts.push(['rule', 'Custom rule']);
+      return opts;
+    }
+
+    /** Re-derive every control from st.rule (after a raw edit, or on load). */
+    function syncFromRule() {
+      const options = parseRule(st.rule);
+      st.model = ruleToModel(options);
+      st.preset = presetOf(options, st.model);
+      const today = todayIn(st.tz), m = st.model;
+      st.ctx = { ...today };
+      if (m?.unit === 'week' && m.days.length === 1) st.ctx.weekday = m.days[0];
+      if (m?.unit === 'month' && m.monthMode === 'day') st.ctx.day = m.monthDay;
+      if (m?.unit === 'month' && m.monthMode === 'lastday') st.ctx.isLastDay = true;
+      if (m?.unit === 'month' && (m.monthMode === 'nth' || m.monthMode === 'last')) {
+        st.ctx.weekday = m.weekday;
+        if (m.monthMode === 'nth') st.ctx.nth = m.nth;
+        else st.ctx.isLast = true;
+      }
+      if (m?.unit === 'hour') st.hoursEvery = m.every;
+      if (m && m.unit !== 'hour') st.lastTime = { hour: m.hour, minute: m.minute };
+      if (document.activeElement !== rawIn) rawIn.value = st.rule;
+      render();
+    }
+
+    function render() {
+      fill(presetSel, presetOptions().map(([v, label]) => h('option', { value: v, selected: v === st.preset }, label)));
+      const m = st.model;
+      const timed = ['daily', 'weekdays', 'weekly', 'monthday', 'monthlastday', 'monthnth', 'monthlast'].includes(st.preset);
+      timeLabel.hidden = !timed;
+      hoursRow.hidden = st.preset !== 'hours';
+      if (timed) timeIn.value = timeOf(m);
+      if (st.preset === 'hours') { hoursIn.value = String(st.hoursEvery); minuteIn.value = String(m?.minute ?? 0); }
+      // The builder shows for "Custom…" (a rule it can express that no preset matches, or the host picked it).
+      builder.hidden = st.preset !== 'custom';
+      if (st.preset === 'custom' && m) {
+        everyIn.value = String(m.every);
+        everyIn.max = String(MAX_EVERY[m.unit]);
+        everyIn.disabled = dis || m.unit === 'month'; // monthly is every month, or it would skip some
+        unitSel.value = m.unit;
+        chipRow.hidden = m.unit !== 'week';
+        for (const c of chips) c.setAttribute('aria-pressed', String(m.days.includes(c.dataset.day)));
+        monthBox.hidden = m.unit !== 'month';
+        const wd = WD_LONG[m.weekday || st.ctx.weekday];
+        nthText.textContent = `The ${ORDINAL[m.nth > 0 ? m.nth : Math.min(4, st.ctx.nth)]} ${wd}`;
+        lastText.textContent = `The last ${wd}`;
+        monthRadios[m.monthMode].checked = true;
+        monthDayIn.value = String(m.monthDay ?? Math.min(28, st.ctx.day));
+        bTimeRow.hidden = m.unit === 'hour';
+        bMinuteRow.hidden = m.unit !== 'hour';
+        bTimeIn.value = timeOf(m);
+        bMinuteIn.value = String(m.minute);
+      }
+      // A rule nothing else can show: open the raw view so the host sees what it is.
+      if (st.preset === 'rule') advanced.open = true;
+      renderDebug();
+      schedulePreview();
+    }
+
+    function renderDebug() {
+      const d = st.debug;
+      debugEl.hidden = !d?.fast_ticks;
+      if (d?.fast_ticks) debugEl.textContent = `Debug fast ticks are on: AP (and the jury) tick every ${d.tick_seconds || 10} s instead of on this schedule.`;
+    }
+
+    /** Set a new rule from a preset or the builder (never from the raw field). */
+    function setRule(rule, { keepControls = false } = {}) {
+      st.rule = rule;
+      rawIn.value = rule;
+      rawErr.textContent = '';
+      rawIn.removeAttribute('aria-invalid');
+      if (keepControls) { schedulePreview(); } else syncFromRule();
+      changed();
+    }
+
+    // A model for a preset, from the context and the current time of day.
+    function presetModel(id) {
+      const c = st.ctx, base = { every: 1, days: [], monthMode: 'day', monthDay: null, nth: null, weekday: null, ...st.lastTime };
+      if (!timeLabel.hidden && timeIn.value) readTime(timeIn, base);
+      switch (id) {
+        case 'daily': return { ...base, unit: 'day' };
+        case 'weekdays': return { ...base, unit: 'week', days: ['MO', 'TU', 'WE', 'TH', 'FR'] };
+        case 'weekly': return { ...base, unit: 'week', days: [c.weekday] };
+        case 'monthday': return { ...base, unit: 'month', monthMode: 'day', monthDay: Math.min(28, c.day) };
+        case 'monthlastday': return { ...base, unit: 'month', monthMode: 'lastday' };
+        case 'monthnth': return { ...base, unit: 'month', monthMode: 'nth', nth: Math.min(4, c.nth), weekday: c.weekday };
+        case 'monthlast': return { ...base, unit: 'month', monthMode: 'last', nth: -1, weekday: c.weekday };
+        case 'hours': return { ...base, unit: 'hour', every: st.hoursEvery, minute: st.model?.unit === 'hour' ? st.model.minute : 0 };
+        default: return null;
+      }
+    }
+
+    presetSel.addEventListener('change', () => {
+      const id = presetSel.value;
+      if (id === 'start') return setRule('FREQ=DAILY');
+      if (id === 'rule') return; // keep the custom rule as it is
+      if (id === 'custom') {
+        // Open the builder on the current rule if it fits, else on "weekly on today's weekday".
+        st.preset = 'custom';
+        if (!st.model) { st.model = presetModel('weekly'); setRule(modelToRule(st.model), { keepControls: true }); }
+        render();
+        return;
+      }
+      const m = presetModel(id);
+      st.model = m;
+      setRule(modelToRule(m));
+    });
+    timeIn.addEventListener('change', () => {
+      if (!st.model || timeLabel.hidden) return;
+      readTime(timeIn, st.model);
+      setRule(modelToRule(st.model));
+    });
+    const hoursChanged = () => {
+      st.hoursEvery = clampInt(hoursIn, 1, MAX_EVERY.hour, st.hoursEvery);
+      st.model = { ...presetModel('hours'), every: st.hoursEvery, minute: clampInt(minuteIn, 0, 59, 0) };
+      setRule(modelToRule(st.model), { keepControls: true });
+    };
+    hoursIn.addEventListener('change', hoursChanged);
+    minuteIn.addEventListener('change', hoursChanged);
+
+    /** Builder edits: rebuild the rule, keep the builder open (presets don't take over). */
+    function fromBuilder() {
+      const m = st.model;
+      st.preset = 'custom';
+      if (m.unit !== 'hour') st.lastTime = { hour: m.hour, minute: m.minute };
+      setRule(modelToRule(m), { keepControls: true });
+      render();
+    }
+    everyIn.addEventListener('change', () => { st.model.every = clampInt(everyIn, 1, MAX_EVERY[st.model.unit], 1); fromBuilder(); });
+    unitSel.addEventListener('change', () => {
+      const m = st.model, unit = unitSel.value;
+      m.unit = unit;
+      m.every = Math.min(m.every, MAX_EVERY[unit]);
+      if (unit === 'week' && !m.days.length) m.days = [st.ctx.weekday];
+      if (unit === 'month' && m.monthMode === 'day' && !m.monthDay) m.monthDay = Math.min(28, st.ctx.day);
+      if (unit === 'month' && m.monthMode !== 'day' && !m.weekday) m.weekday = st.ctx.weekday;
+      fromBuilder();
+    });
+    for (const [mode, input] of Object.entries(monthRadios)) {
+      input.addEventListener('change', () => {
+        const m = st.model;
+        m.monthMode = mode;
+        if (mode === 'day') m.monthDay = clampInt(monthDayIn, 1, 28, Math.min(28, st.ctx.day));
+        else if (mode === 'lastday') { /* BYMONTHDAY=-1 */ }
+        else { m.weekday ||= st.ctx.weekday; m.nth = mode === 'last' ? -1 : (m.nth > 0 ? m.nth : Math.min(4, st.ctx.nth)); }
+        fromBuilder();
+      });
+    }
+    monthDayIn.addEventListener('change', () => { st.model.monthMode = 'day'; st.model.monthDay = clampInt(monthDayIn, 1, 28, Math.min(28, st.ctx.day)); fromBuilder(); });
+    bTimeIn.addEventListener('change', () => { readTime(bTimeIn, st.model); fromBuilder(); });
+    bMinuteIn.addEventListener('change', () => { st.model.minute = clampInt(bMinuteIn, 0, 59, 0); fromBuilder(); });
+
+    // Raw edits: debounced; the rule string is kept exactly as typed.
+    let rawTimer = null;
+    rawIn.addEventListener('input', () => {
+      clearTimeout(rawTimer);
+      rawTimer = setTimeout(() => { st.rule = rawIn.value.trim(); syncFromRule(); }, 300);
+    });
+    rawIn.addEventListener('change', () => { clearTimeout(rawTimer); st.rule = rawIn.value.trim(); syncFromRule(); });
+
+    tzSel.addEventListener('change', () => { st.tz = tzSel.value; syncFromRule(); changed(); });
+
+    // -- preview (server-side; debounced, latest request wins)
+    let previewTimer = null, previewSeq = 0;
+    function schedulePreview() {
+      clearTimeout(previewTimer);
+      previewTimer = setTimeout(runPreview, 250);
+    }
+    async function runPreview() {
+      const seq = ++previewSeq, rule = st.rule, tz = st.tz;
+      let res;
+      try {
+        res = await api('POST', '/api/schedule/preview', { rrule: rule, timezone: tz });
+      } catch (e) {
+        if (seq !== previewSeq) return;
+        st.summary = 'Invalid schedule';
+        summaryEl.textContent = e.code === 'invalid_schedule' ? `Invalid schedule: ${e.message}` : e.message;
+        summaryEl.classList.add('bad');
+        if (e.code === 'invalid_schedule') { rawErr.textContent = e.message; rawIn.setAttribute('aria-invalid', 'true'); }
+        fill(nextList);
+        root.onSummary?.();
+        return;
+      }
+      if (seq !== previewSeq) return;
+      st.summary = res.summary;
+      summaryEl.classList.remove('bad');
+      fill(summaryEl, h('b', {}, res.summary));
+      rawErr.textContent = '';
+      rawIn.removeAttribute('aria-invalid');
+      fill(nextList, res.occurrences.map((o) => h('li', {},
+        h('time', { datetime: o.local }, fmtOccurrence(o.ts, tz)),
+        o.dst_shift ? h('span', { class: 'badge warn', title: `UTC offset is now ${o.utc_offset}` }, 'DST change') : null)));
+      root.onSummary?.();
+    }
+
+    root.getValues = () => ({ rrule: st.rule, timezone: st.tz });
+    root.summaryText = () => st.summary || '…';
+    root.setDebug = (d) => { st.debug = d; renderDebug(); };
+    root.onSummary = null;
+
+    serverDefaults().then(({ timezones }) => {
+      if (!timezones?.length) return;
+      const list = timezones.includes(st.tz) ? timezones : [st.tz, ...timezones];
+      fill(tzSel, zoneOptions(list, st.tz));
+    }).catch(() => { });
+
+    syncFromRule();
     return root;
   }
 
@@ -350,7 +841,12 @@
     app.replaceChildren(h('div', { class: 'spinner' }, 'Loading…'));
     let defaults, allowDebug, auth;
     try {
-      [{ config: defaults, allow_debug: allowDebug }, auth] = await Promise.all([api('GET', '/api/defaults'), authConfig()]);
+      let timezones;
+      [{ config: defaults, allow_debug: allowDebug, timezones }, auth] = await Promise.all([serverDefaults(), authConfig()]);
+      // A new game's schedule starts in this browser's time zone (the server default is UTC).
+      defaults = structuredClone(defaults);
+      const zone = browserZone();
+      if (zone && timezones?.includes(zone)) defaults.ap.timezone = zone;
     } catch (e) {
       app.replaceChildren(h('div', { class: 'card' }, e.message));
       return;
@@ -1154,6 +1650,7 @@
         ? h('p', {}, 'Next AP in ', h('b', { 'data-until': st.game.next_ap_tick_at }, '…'),
           st.game.ends_at ? [' · game ends in ', h('b', { 'data-until': st.game.ends_at }, '…')] : null)
         : null,
+      st.game.schedule ? h('p', { class: 'muted small sched-line' }, 'AP schedule: ', st.game.schedule.effective_summary) : null,
       my.alive && st.game.status === 'active' ? h('ul', { class: 'actions-list' },
         item('Move', '1 AP', blockers({ cost: 1 }) || (freeAdj.length ? 'Tap a highlighted tile next to your tank.' : 'No free adjacent tiles.')),
         item('Shoot', '1 AP', blockers({ cost: 1 }) || (enemiesInRange.length ? `${enemiesInRange.length} tank(s) in range: tap one.` : 'No tanks in range.')),
@@ -1283,6 +1780,7 @@
       h('p', {}, 'Each cycle, every juror (destroyed player) may vote for one living player. The most-voted player gets +1 AP',
         st.game.config.jury.tie_rule === 'all' ? ' (ties: everyone tied gets it).' : ' (ties: one random tied player gets it).'),
       st.game.status === 'active' ? h('p', {}, 'This cycle closes in ', h('b', { 'data-until': jury.closes_at }, '…'), '.') : null,
+      st.game.schedule ? h('p', { class: 'muted small' }, 'Cycles close on the AP schedule, right after each AP tick: ', st.game.schedule.effective_summary, '.') : null,
       !st.game.config.jury.votes_public ? h('p', { class: 'muted small' }, 'Votes are secret in this game: you only see your own.') : null,
       h('ul', { class: 'plist' }, living.map((p) => h('li', {},
         h('span', { class: 'dot', style: { background: p.color } }),

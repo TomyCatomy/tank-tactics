@@ -42,8 +42,11 @@ except ImportError as e:  # pragma: no cover
     print(f"Missing dependency ({e}). Run: .venv/Scripts/python -m pip install -r requirements-dev.txt")
     sys.exit(2)
 
-YEAR = 365 * 86_400
-QUIET = {"ap": {"interval_seconds": YEAR}}  # no AP ticks unless a scenario wants them
+# No AP ticks (or jury closes) unless a scenario wants them: the first is at least ~24 hours away.
+QUIET = {"ap": {"rrule": "FREQ=MONTHLY;BYMONTHDAY=1"}}
+# Time limits are rounded up to the next round minute, except under debug fast ticks. These keep
+# a deadline of a few seconds exact, with no tick before it.
+EXACT_DEADLINE = {"debug": {"fast_ticks": True, "tick_seconds": 3600}}
 RICH = {"start": {"ap": 60, "hp": 3, "action_range": 200}, **QUIET}
 
 
@@ -353,7 +356,7 @@ def invalid_configs_are_rejected(t: T):
     bad = [
         {"nope": 1}, {"board": {"nope": 1}}, {"board": 5}, {"board": {"size": 2}}, {"board": {"size": 201}},
         {"board": {"size": "5"}}, {"board": {"size": 5.0}}, {"board": {"size": True}}, {"start": {"hp": 0}},
-        {"start": {"hp": 101}}, {"start": {"ap": -1}}, {"start": {"action_range": 0}}, {"ap": {"interval_seconds": 0}},
+        {"start": {"hp": 101}}, {"start": {"ap": -1}}, {"start": {"action_range": 0}}, {"ap": {"rrule": "FREQ=SECONDLY"}},
         {"ap": {"cap": 0}}, {"actions": {"range_upgrade_cost": 0}}, {"actions": {"max_range": 1}},
         {"actions": {"allow_give_hp": "yes"}}, {"jury": {"tie_rule": "coin"}}, {"jury": {"enabled": 1}},
         {"fog_of_war": "on"}, {"max_duration_seconds": 0}, {"players": {"minimum": 1}},
@@ -584,7 +587,7 @@ def dead_host_keeps_host_powers(t: T):
 @scenario("endgame", "timed")
 def time_limit_tiebreaks(t: T):
     def run(mutate, want):
-        cfg = merge(QUIET, {"max_duration_seconds": 3, "start": {"hp": 3, "ap": 4, "action_range": 200}})
+        cfg = merge(QUIET, EXACT_DEADLINE, {"max_duration_seconds": 3, "start": {"hp": 3, "ap": 4, "action_range": 200}})
         s = t.lobby(3, cfg)
         t.good(t.post(s[0], "start"), "start")
         mutate(s)
@@ -643,8 +646,7 @@ def ap_cap_holds_during_ticks(t: T):
 @scenario("restart", "timed")
 def crash_loses_nothing(t: T):
     srv = t.h.spawn("crash")
-    a, b, c = t.game(3, {"fog_of_war": "alliance", "jury": {"enabled": True, "interval_seconds": YEAR},
-                         "start": {"hp": 2}}, srv)
+    a, b, c = t.game(3, {"fog_of_war": "alliance", "jury": {"enabled": True}, "start": {"hp": 2}}, srv)
     t.good(t.req("POST", f"/api/games/{a.game_id}/chat", a, srv=srv, json={"text": "hello"}), "public chat")
     t.good(t.req("POST", f"/api/games/{a.game_id}/chat", a, srv=srv, json={"to_id": b.id, "text": "psst"}), "DM")
     for body in ({"type": "give_ap", "target_id": b.id, "amount": 2}, {"type": "shoot", "target_id": c.id},
@@ -688,7 +690,7 @@ def downtime_catches_up_ap_ticks(t: T):
 @scenario("restart", "timed")
 def time_limit_passes_during_downtime(t: T):
     srv = t.h.spawn("deadline")
-    a, _ = t.lobby(2, merge(QUIET, {"max_duration_seconds": 2}), srv)
+    a, _ = t.lobby(2, merge(QUIET, EXACT_DEADLINE, {"max_duration_seconds": 2}), srv)
     t.good(t.req("POST", f"/api/games/{a.game_id}/start", a, srv=srv), "start")
     srv.crash()
     time.sleep(2.5)
@@ -782,7 +784,10 @@ def websocket_pushes_are_redacted_too(t: T):
 # == jury ================================================================================
 
 def jury_game(t: T, n: int, **jury) -> list[Seat]:
-    return t.game(n, {"jury": {"enabled": True, "interval_seconds": 3, **jury}, "start": {"hp": 1, "ap": 5}})
+    # The jury closes on the AP schedule, so a 3-second cycle means an AP tick every 3 seconds too.
+    # Sub-minute schedules exist only as debug fast ticks (the harness runs with ALLOW_DEBUG).
+    return t.game(n, {"debug": {"fast_ticks": True, "tick_seconds": 3}, "jury": {"enabled": True, **jury},
+                      "start": {"hp": 1, "ap": 5}})
 
 
 def awards(t: T, seat: Seat) -> list[dict]:
@@ -794,7 +799,7 @@ def jury_permissions(t: T):
     off = t.game(3, {"start": {"hp": 1}})
     t.good(t.act(off[0], "shoot", target_id=off[2].id), "kill")
     t.err(t.post(off[2], "vote", {"candidate_id": off[0].id}), 400, "disabled", "vote with jury off")
-    a, b, c, d = t.game(4, {"jury": {"enabled": True, "interval_seconds": YEAR}, "start": {"hp": 1, "ap": 5}})
+    a, b, c, d = t.game(4, {"jury": {"enabled": True}, "start": {"hp": 1, "ap": 5}})  # monthly cycles (QUIET)
     t.err(t.post(a, "vote", {"candidate_id": b.id}), 400, "forbidden", "living player votes")
     t.good(t.act(a, "shoot", target_id=d.id), "kill")
     t.ok(next(p for p in t.view(a)["players"] if p["id"] == d.id)["is_juror"], "dead player becomes a juror")
@@ -811,10 +816,17 @@ def jury_awards_winner(t: T):
     a, b, c, d = jury_game(t, 4)
     t.good(t.act(a, "shoot", target_id=d.id), "kill")
     t.good(t.post(d, "vote", {"candidate_id": b.id}), "vote")
-    before = t.tank(b)["ap"]
+    v0 = t.view(a)
+    before = next(p for p in v0["players"] if p["id"] == b.id)["ap"]
+    ticks_before = sum(e["amount"] for e in v0["log"] if e["event_type"] == "ap_tick")
     got = t.wait(lambda: awards(t, a), 6, "jury award")
     t.eq((got[0]["details"]["winners"], got[0]["details"].get("tally")), ([b.id], {b.id: 1}), "award")
-    t.eq(t.tank(b)["ap"], before + 1, "winner gets +1 AP")
+    # Each cycle closes on an AP occurrence, just after that occurrence's tick (NOTES.md 6).
+    v1 = t.view(a)
+    tick_ids = [e["id"] for e in v1["log"] if e["event_type"] == "ap_tick" and e["ts"] == got[0]["ts"]]
+    t.ok(tick_ids and max(tick_ids) < got[0]["id"], "the AP tick at the award's moment comes first")
+    ticks = sum(e["amount"] for e in v1["log"] if e["event_type"] == "ap_tick") - ticks_before
+    t.eq(next(p for p in v1["players"] if p["id"] == b.id)["ap"], before + ticks + 1, "winner gets +1 AP on top of the ticks")
     t.eq(t.view(a)["jury"]["votes"], [], "votes reset for the next cycle")
 
 
@@ -1358,7 +1370,7 @@ def create_join_and_start_through_the_ui(t: T):
 @scenario("browser", "browser")
 def play_a_whole_game_in_the_ui(t: T):
     a, b, c = t.game(3, {"board": {"size": 6, "wreckage_blocks_tile": True}, "start": {"hp": 2, "ap": 12, "action_range": 6},
-                         "jury": {"enabled": True, "interval_seconds": YEAR}})
+                         "jury": {"enabled": True}})
     pa, pb = t.h.browser.page(t), t.h.browser.page(t)
     try:
         open_seat(t, pa, a)
@@ -1441,7 +1453,7 @@ def play_a_whole_game_in_the_ui(t: T):
 
 @scenario("browser", "browser")
 def every_tab_renders_in_every_mode(t: T):
-    configs = [{}, {"fog_of_war": "alliance"}, {"jury": {"enabled": True, "interval_seconds": YEAR}}]
+    configs = [{}, {"fog_of_war": "alliance"}, {"jury": {"enabled": True}}]
     for cfg in configs:
         for width in (1280, 360):
             a, b, c = t.game(3, merge({"start": {"hp": 1}}, cfg))
@@ -1556,7 +1568,8 @@ def rules_modal_from_the_top_bar(t: T):
             cfg = t.view(host)["game"]["config"]
             t.ok(f"start with {cfg['start']['hp']} HP, {cfg['start']['ap']} AP (action point) and range "
                  f"{cfg['start']['action_range']}" in text, "rules disagree with the default starting stats")
-            t.eq(cfg["ap"]["interval_seconds"], 86400, "rules say AP arrives every 24 hours")
+            t.eq((cfg["ap"]["rrule"], cfg["ap"]["timezone"]), ("FREQ=DAILY", "UTC"),
+                 "rules say AP arrives every 24 hours (FREQ=DAILY from the start)")
             t.ok("+1 AP every 24 hours" in text, "rules lost the AP interval")
             cost = cfg["actions"]["range_upgrade_cost"]
             t.ok(re.search(rf"Upgrade range\s+{cost} AP", text), f"rules disagree with the upgrade cost of {cost} AP")
