@@ -57,3 +57,13 @@ Two suites, each with its own `conftest.py` (fixtures). Plain helpers shared by 
 
 - `tests/backend/`: `test_game.py` (pure rules), `test_service.py` (persistence and restart catch-up on a real SQLite file via `tmp_path`, concurrency with threads and a barrier, chat privacy), `test_api.py` (the `api` fixture: FastAPI `TestClient`, needs `httpx2`; includes WebSocket pushes).
 - `tests/frontend/`: Playwright drives the real page in headless Edge (or bundled Chromium) against uvicorn in a thread. The conftest provides `server` (a `LiveServer` that can `stop()`/`start()` to simulate outages), `browser` and `page`, and marks every test here `ui`. This is the only coverage of `public/app.js`, so add a test here for client bugs. Skipped if no browser can be launched.
+
+## Commits
+
+The goal is that the set of commits that gets merged is coherent and doesn't go in circles (no "add X", "fix X", "tweak X" chains).
+
+- Every commit is one atomic change and passes the tests on its own, unless the user explicitly says otherwise for that commit.
+- On a branch that hasn't been merged yet, a fix or tweak the user asks for to work already on that branch is folded into the commit it changes (for example `git commit --fixup=<sha>` followed by a non-interactive `git rebase --autosquash`), not added as a new commit. A request that is genuinely a new atomic change of its own gets its own commit.
+- After a rewrite, check every rewritten commit: the full suite on the branch tip, and `pytest -q -m "not ui"` on each commit before it (for example with `git rebase --exec`).
+- If folding it in would get messy (conflicts across later commits, a commit that has to be split, merge commits on the branch, and so on), ask the user before falling back to a separate commit or any other exception.
+- Rewriting an unmerged branch that has already been pushed means force-pushing it. Use `git push --force-with-lease`, and only on that branch.
