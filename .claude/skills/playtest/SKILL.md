@@ -47,7 +47,7 @@ Exit code 0 means all passed, 1 means failures, 2 means the harness couldn't run
 .venv/Scripts/python .claude/skills/playtest/scripts/inspect_ui.py --out <scratchpad>/ui
 ```
 
-It starts the current working tree and a baseline (by default, where this branch left `origin/main`) side by side, sets up the same games on both, and captures every screen: home, join, each lobby tab, rules, each game tab, the action sheets, a dead player with the jury, fog of war, game over and a closed lobby. It does this on `desktop` (1280x800), `iphone` (390x664, WebKit), `small-android` (320x568) and `iphone-landscape` (667x375). Use `--devices` / `--only` to narrow it, `--baseline <ref>` to compare with something else, and `--current <ref>` to replay an old version. Exit code 0 means no new findings, 1 means new findings, 2 means it couldn't run.
+It starts the current working tree and a baseline (by default, where this branch left `origin/staging`) side by side, sets up the same games on both, and captures every screen: home, join, each lobby tab, rules, each game tab, the action sheets, a dead player with the jury, fog of war, game over and a closed lobby. It does this on `desktop` (1280x800), `iphone` (390x664, WebKit), `small-android` (320x568) and `iphone-landscape` (667x375). Use `--devices` / `--only` to narrow it, `--baseline <ref>` to compare with something else, and `--current <ref>` to replay an old version. Exit code 0 means no new findings, 1 means new findings, 2 means it couldn't run.
 
 Read `<out>/report.md` first. It has three parts:
 

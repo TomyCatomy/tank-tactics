@@ -10,7 +10,7 @@ clipped text, sideways scroll, tiny tap targets, text fields that make iOS zoom,
 away, junk text and JavaScript errors. Findings that the baseline also has are reported separately.
 
     .venv/Scripts/python .claude/skills/playtest/scripts/inspect_ui.py --out <dir>
-    ... inspect_ui.py --baseline HEAD~1 --out <dir>          # compare with another ref (default: merge-base with origin/main)
+    ... inspect_ui.py --baseline HEAD~1 --out <dir>          # compare with another ref (default: merge-base with origin/staging)
     ... inspect_ui.py --baseline b8801a6 --current 9e02bea --out <dir>   # replay an old regression
     ... inspect_ui.py --baseline none --out <dir>            # no comparison, current only
     ... inspect_ui.py --devices iphone,desktop --only lobby,game --out <dir>
@@ -493,7 +493,7 @@ def git(*args: str, cwd: Path = ROOT) -> str:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--out", required=True, help="output directory (created; existing contents replaced)")
-    ap.add_argument("--baseline", help="git ref to compare with, or 'none' (default: where this branch left origin/main, "
+    ap.add_argument("--baseline", help="git ref to compare with, or 'none' (default: where this branch left origin/staging, "
                     "so only this branch's changes count as new)")
     ap.add_argument("--current", help="git ref to inspect instead of the working tree (e.g. to replay an old regression)")
     ap.add_argument("--devices", help=f"comma-separated subset of: {', '.join(DEVICES)}")
@@ -527,7 +527,7 @@ def main() -> int:
             current_root = ROOT
             current_desc = f"working tree (HEAD {head}{', with uncommitted changes' if dirty else ''})"
         if args.baseline is None:
-            for upstream in ("origin/main", "main"):
+            for upstream in ("origin/staging", "origin/main", "main"):
                 try:
                     args.baseline = git("merge-base", args.current or "HEAD", upstream)[:9]
                     notes.append(f"Baseline: where this branch left {upstream}.")
@@ -535,7 +535,7 @@ def main() -> int:
                 except subprocess.CalledProcessError:
                     continue
             else:
-                print("HARNESS ERROR: no origin/main or main to compare with; pass --baseline <ref> or --baseline none")
+                print("HARNESS ERROR: no origin/staging, origin/main or main to compare with; pass --baseline <ref> or --baseline none")
                 return 2
         if args.baseline != "none":
             try:

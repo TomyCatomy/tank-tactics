@@ -67,7 +67,8 @@ A Python file is at most 150 lines unless there's a good reason for it to be lon
 
 ## Workspaces and branches
 
-- Each new feature request in a thread starts in its own workspace: before changing any files, create a separate git worktree checked out to a new feature branch (for example `feature/<short-name>`) based on the latest `origin/main`, and do all the work for that request there. Never make feature changes on `main` or in the main checkout.
+- Each new feature request in a thread starts in its own workspace: before changing any files, create a separate git worktree checked out to a new feature branch (for example `feature/<short-name>`) based on the latest `origin/staging`, and do all the work for that request there. Never make feature changes on `main`, on `staging` or in the main checkout.
+- Feature pull requests target `staging`. Only `staging` is merged into `main`, through a pull request from `staging` into `main`. `.github/workflows/main-from-staging.yml` enforces this (the repo's plan has no branch protection): it moves any other pull request into `main` over to `staging`, and fast-forwards `staging` after every merge into `main` so the two stay identical.
 - Follow-up fixes and tweaks to that feature stay in the same workspace and branch (and are folded in as described under Commits). A different, unrelated feature request in the same thread gets its own new workspace and branch.
 - The `.venv` is not shared with a new worktree: either create one there with the setup command above, or run the main checkout's interpreter by its absolute path from inside the worktree.
 
