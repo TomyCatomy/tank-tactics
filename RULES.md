@@ -23,7 +23,11 @@ changed these numbers; the game page shows the real values.
 ## Action points
 
 - There are **no turns**. Every living tank gets **+1 AP every 24 hours**, all at the
-  same moment.
+  same moment. That is the default: the host can pick another schedule, such as every
+  weekday at 09:00, every 6 hours or the last Friday of each month, in their time zone.
+  Times follow that zone's clock, so "09:00" stays 09:00 when the clocks change. AP
+  always arrives on a whole minute, at most once a minute, and at least once every
+  month. The game page shows the schedule and when the next AP arrives.
 - Spend AP whenever you like, as much as you have, in any order. Unspent AP is kept.
   Saving up is a legitimate strategy.
 
@@ -56,8 +60,10 @@ and nothing stops them from doing it to you.
 
 ### The jury (off by default)
 
-If the jury is on, destroyed players become **jurors**. Once a day, each juror can vote
-for one living player, and can change that vote until the day closes. The living player
+If the jury is on, destroyed players become **jurors**. Each AP tick closes a jury
+cycle, so with the default schedule that's once a day. During a cycle each juror can vote
+for one living player, and can change that vote until the cycle closes. The cycle closes
+just after that tick's AP is handed out. The living player
 with the most votes gets **+1 AP**. If players tie, they all get it (or, if the host chose,
 one of them at random). With no votes, nobody gets anything. Votes are public unless the
 host made them secret.
@@ -76,10 +82,11 @@ Positions, HP, range, shots, moves, kills, range upgrades and the winner are alw
 
 ### Other host settings
 
-The host can also change the board size, starting stats, how often AP arrives, the
+The host can also change the board size, starting stats, the AP schedule, the
 upgrade cost, an AP cap or a maximum range, and whether destroyed tanks leave wrecks that
 block their tile. The host can also turn off giving HP or looting, and set a time limit.
-If the time limit is reached, the living tank with the most HP wins. Ties go to the most
+The time limit ends the game on the next whole minute after it runs out, and no
+AP arrives at that moment. When it is reached, the living tank with the most HP wins. Ties go to the most
 AP, then the highest range. If still tied, the win is shared.
 
 ## Winning

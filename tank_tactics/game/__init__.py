@@ -18,6 +18,7 @@ Modules:
     commands typed action requests (ActionType enum + one model per action)
     jury     the optional jury of dead players
     clock    AP ticks, jury cycles, time limit, restart catch-up
+    recurrence  the AP schedule (RRULE) bound to a game's start
     view     per-viewer fog-of-war redaction
 """
 from .actions import MOVE_COST, SHOOT_COST, give_ap, give_hp, move, shoot, upgrade_range
@@ -34,6 +35,7 @@ from .commands import (
 )
 from .clock import advance_time, game_ends_at, next_ap_tick_at, next_due_at, next_jury_close_at
 from .jury import cast_jury_vote
+from .recurrence import next_occurrence_after, occurrences_between, schedule_of, schedule_view
 from .lobby import (
     PLAYER_COLORS,
     add_player,
@@ -68,6 +70,8 @@ __all__ = [
     "check_game_over",
     # clock
     "advance_time", "game_ends_at", "next_ap_tick_at", "next_due_at", "next_jury_close_at",
+    # recurrence
+    "next_occurrence_after", "occurrences_between", "schedule_of", "schedule_view",
     # view
     "can_see", "view_for",
 ]

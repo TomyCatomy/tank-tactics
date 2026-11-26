@@ -10,6 +10,7 @@ import pytest
 from tank_tactics import game
 from tank_tactics.service import ServiceError
 
+
 from ..support import DAY, T0, make_service, place, setup_game
 
 # 6. Tick catch-up across a real restart -----------------------------------------
@@ -173,14 +174,14 @@ def test_host_updates_lobby_config_and_it_persists(tmp_path):
     svc, clock = make_service(db)
     host = svc.create_game("Ann")
     gid = host["game_id"]
-    svc.update_config(gid, host["player_id"], {"jury": {"enabled": True}, "ap": {"interval_seconds": 3600}})
+    svc.update_config(gid, host["player_id"], {"jury": {"enabled": True}, "ap": {"rrule": "FREQ=HOURLY"}})
     with pytest.raises(ServiceError) as e:
         svc.update_config(gid, host["player_id"], {"nope": 1})
     assert e.value.code == "invalid_config"
     svc.store.close()
     svc2, _ = make_service(db, clock)
     cfg = svc2.games[gid].config
-    assert cfg.jury.enabled and cfg.ap.interval_seconds == 3600
+    assert cfg.jury.enabled and cfg.ap.rrule == "FREQ=HOURLY"
 
 
 def test_act_validates_raw_payloads():
@@ -288,3 +289,35 @@ def test_unknown_game_is_not_found():
     with pytest.raises(ServiceError) as e:
         svc.view("nope", None)
     assert e.value.code == "not_found"
+
+
+# -- AP schedule (RRULE) across restarts ---------------------------------------------------------
+
+def test_rrule_catch_up_after_long_restart_is_collapsed(tmp_path):
+    db = str(tmp_path / "t.db")
+    svc, clock = make_service(db)
+    gid, _, _ = setup_game(svc, config={"ap": {"rrule": "FREQ=DAILY;BYHOUR=9;BYMINUTE=0", "timezone": "Asia/Jerusalem"}})
+    sched = game.schedule_of(svc.games[gid])
+    svc.store.close()
+
+    clock.t += 400 * DAY  # down for over a year
+    svc2, _ = make_service(db, clock)
+    svc2.tick()
+    s = svc2.games[gid]
+    n, _, last = sched.between(T0, clock.t, 0)
+    assert n in (399, 400) and all(pl.ap == 1 + n for pl in s.players)
+    ticks = [e for e in s.log if e.event_type == "ap_tick"]
+    assert len(ticks) == 1 and ticks[0].details["ticks"] == n and s.last_ap_tick_at == last
+    assert game.next_due_at(s) == sched.next_after(last) > clock.t
+    svc2.store.close()
+
+
+def test_sub_minute_ticks_only_through_debug_fast_ticks():
+    for allow_debug in (True, False):  # not even a debug server takes FREQ=SECONDLY as the schedule
+        svc, _ = make_service(allow_debug=allow_debug)
+        with pytest.raises(ServiceError) as e:
+            svc.create_game("Ann", {"ap": {"rrule": "FREQ=SECONDLY;INTERVAL=5"}})
+        assert e.value.code == "invalid_config" and "FREQ=SECONDLY is not allowed" in e.value.message
+        svc.create_game("Ann", {"ap": {"rrule": "FREQ=MINUTELY"}})
+    on, _ = make_service(allow_debug=True)
+    on.create_game("Ann", {"debug": {"fast_ticks": True, "tick_seconds": 5}})

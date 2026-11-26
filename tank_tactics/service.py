@@ -17,7 +17,7 @@ import time
 from collections import OrderedDict, defaultdict
 from typing import Any, Callable
 
-from . import game
+from . import game, recurrence
 from .config import ConfigError, DebugConfig, GameConfig, ServerConfig, is_valid_unicode
 from .store import Message, Store, User, hash_token
 
@@ -82,6 +82,8 @@ class GameService:
         self.action_limiter = RateLimiter(self.cfg.action_rate_per_second, self.cfg.action_rate_per_second, clock)
         self.chat_limiter = RateLimiter(self.cfg.chat_rate_per_10s / 10, self.cfg.chat_rate_per_10s, clock)
         self.login_limiter = RateLimiter(self.cfg.login_rate_per_minute / 60, self.cfg.login_rate_per_minute, clock)
+        # Schedule previews are typed live (debounced) in the lobby form; per client IP.
+        self.preview_limiter = RateLimiter(5, 30, clock)
         # Called with (game_id, new_entries) after every committed change. The API's Hub hooks this.
         self.on_change: Callable[[str, list[game.LogEntry]], None] = lambda gid, entries: None
 
@@ -247,6 +249,19 @@ class GameService:
             return entries
 
         self._mutate(game_id, apply)
+
+    def preview_schedule(self, rule: Any, tz: Any, count: int = 5) -> dict[str, Any]:
+        """Validate an AP schedule as the lobby would and list its next occurrences if a
+        game started now. Lets the client show a live summary without its own RRULE code."""
+        field = "timezone"
+        try:
+            recurrence.check_timezone(tz)
+            field = "rrule"
+            norm = recurrence.validate(rule, tz)
+            occurrences = recurrence.preview(norm, tz, self.clock(), count)
+        except recurrence.RecurrenceError as e:
+            raise ServiceError("invalid_schedule", f"{field}: {e}") from None
+        return {"rrule": norm, "timezone": tz, "summary": recurrence.describe(norm, tz), "occurrences": occurrences}
 
     def start_game(self, game_id: str, player_id: str) -> None:
         self._mutate(game_id, lambda s: game.start_game(s, player_id, self.clock(), self.rng))

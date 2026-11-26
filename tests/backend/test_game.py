@@ -212,17 +212,17 @@ def test_only_host_can_remove():
 
 
 def test_time_limit_tiebreak_hp_then_ap_then_range():
-    s = make_active({"a": (0, 0), "b": (5, 0), "c": (9, 9)}, max_duration_seconds=100)
+    s = make_active({"a": (0, 0), "b": (5, 0), "c": (9, 9)}, max_duration_seconds=120)
     p(s, "a").hp, p(s, "b").hp, p(s, "c").hp = 4, 4, 2
     p(s, "a").ap, p(s, "b").ap = 3, 3
     p(s, "a").action_range, p(s, "b").action_range = 2, 3
-    game.advance_time(s, T0 + 100, random.Random(0))
+    game.advance_time(s, T0 + 120, random.Random(0))
     assert s.status == "finished" and s.winner_ids == ["b"] and s.end_reason == "time_limit"
 
 
 def test_time_limit_shared_win():
-    s = make_active({"a": (0, 0), "b": (5, 0)}, max_duration_seconds=100)
-    game.advance_time(s, T0 + 100, random.Random(0))
+    s = make_active({"a": (0, 0), "b": (5, 0)}, max_duration_seconds=120)
+    game.advance_time(s, T0 + 120, random.Random(0))
     assert sorted(s.winner_ids) == ["a", "b"]
 
 
@@ -311,8 +311,8 @@ def test_debug_fast_ticks():
 
 
 def test_very_long_downtime_is_batched():
-    s = make_active({"a": (0, 0), "b": (5, 5)}, ap={"interval_seconds": 1})
-    entries = game.advance_time(s, T0 + 10_000, random.Random(0))
+    s = make_active({"a": (0, 0), "b": (5, 5)}, ap={"rrule": "FREQ=MINUTELY"})
+    entries = game.advance_time(s, T0 + 10_000 * 60, random.Random(0))
     assert p(s, "a").ap == 10_001
     assert len(entries) == 1 and entries[0].details["ticks"] == 10_000
 
@@ -577,8 +577,8 @@ def test_config_error_messages_are_readable():
 
 def test_config_derived_values_and_storage_round_trip():
     c = GameConfig.parse({"debug": {"fast_ticks": True, "tick_seconds": 7}})
-    assert c.ap_interval == 7 and c.jury_interval == 7
-    assert GameConfig().ap_interval == 86_400
+    assert c.effective_schedule == ("FREQ=SECONDLY;INTERVAL=7", "UTC")  # AP and jury both follow it
+    assert GameConfig().effective_schedule == ("FREQ=DAILY", "UTC")
     assert GameConfig().board.size_for(20) == 14 and GameConfig().board.size_for(2) == 10
     assert GameConfig.parse({"board": {"size": 6}}).board.size_for(20) == 6
     # Old saves load with new defaults filled in and retired keys ignored.

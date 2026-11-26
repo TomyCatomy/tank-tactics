@@ -163,6 +163,14 @@ def test_payload_field_names(api):
     start = next(e for e in state["log"] if e["event_type"] == "game_start")
     assert set(start["details"]) == {"board_size", "positions", "hp", "action_range"}
     assert state["game"]["config"]["start"]["action_range"] == 2
+    # The lobby's schedule editor reads and writes these.
+    assert set(state["game"]["config"]["ap"]) == {"rrule", "timezone", "cap"}
+    sched = state["game"]["schedule"]
+    assert set(sched) == {"rrule", "timezone", "summary", "effective_rrule", "effective_timezone",
+                          "effective_summary", "upcoming"}
+    assert sched["upcoming"][0] == state["game"]["next_ap_tick_at"] and len(sched["upcoming"]) == 5
+    d = client.get("/api/defaults").json()
+    assert "Asia/Jerusalem" in d["timezones"] and d["config"]["ap"]["rrule"] == "FREQ=DAILY"
 
 
 def test_leave_and_close_endpoints(api):
@@ -257,3 +265,41 @@ def test_existing_debug_game_survives_turning_the_flag_off(tmp_path):
     assert off.get(host["game_id"]).config.debug.fast_ticks is True
     off.update_config(host["game_id"], host["player_id"], {"debug": {"fast_ticks": False}})  # and it can be turned off
     assert off.get(host["game_id"]).config.debug.fast_ticks is False
+
+
+# -- schedule preview ------------------------------------------------------------------------
+
+def test_schedule_preview(api):
+    client, _, clock = api
+    clock.t = 1_774_432_800.0  # 2026-03-25 12:00 in Jerusalem, two days before DST starts
+    r = client.post("/api/schedule/preview", json={"rrule": "freq=daily;byhour=9;byminute=0", "timezone": "Asia/Jerusalem"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["rrule"] == "FREQ=DAILY;BYHOUR=9;BYMINUTE=0"
+    assert body["summary"] == "Every day at 09:00 (Asia/Jerusalem)"
+    assert [o["local"] for o in body["occurrences"]] == [
+        "2026-03-26T09:00+02:00", "2026-03-27T09:00+03:00", "2026-03-28T09:00+03:00",
+        "2026-03-29T09:00+03:00", "2026-03-30T09:00+03:00"]
+    assert [o["dst_shift"] for o in body["occurrences"]] == [False, True, False, False, False]
+
+    for rule, tz, needle in [("FREQ=DAILY;COUNT=2", "UTC", "rrule: COUNT is not allowed"),
+                             ("FREQ=DAILY", "Nowhere/Land", "timezone: unknown time zone"),
+                             ("FREQ=MONTHLY;BYMONTHDAY=30;BYMONTH=2", "UTC", "rrule: never fires")]:
+        r = client.post("/api/schedule/preview", json={"rrule": rule, "timezone": tz})
+        assert r.status_code == 400 and r.json()["error"]["code"] == "invalid_schedule", r.text
+        assert needle in r.json()["error"]["message"]
+    r = client.post("/api/schedule/preview", json={"rrule": "FREQ=DAILY"})
+    assert r.status_code == 400 and r.json()["error"]["code"] == "bad_request"
+
+
+@pytest.mark.parametrize("which", ["debug", "locked"])
+def test_schedule_preview_refuses_seconds_and_skipped_months(api, locked_api, which):
+    client = (api if which == "debug" else locked_api)[0]
+    for rule, needle in [("FREQ=SECONDLY;INTERVAL=10", "FREQ=SECONDLY is not allowed"),
+                         ("FREQ=HOURLY;BYSECOND=30", "BYSECOND can only be 0"),
+                         ("FREQ=MONTHLY;BYMONTHDAY=31", "Use BYMONTHDAY=-1"),
+                         ("FREQ=YEARLY", "less than once a month")]:
+        r = client.post("/api/schedule/preview", json={"rrule": rule, "timezone": "UTC"})
+        assert r.status_code == 400 and needle in r.json()["error"]["message"], r.text
+    r = client.post("/api/schedule/preview", json={"rrule": "FREQ=MONTHLY;BYDAY=TH;BYSETPOS=-1", "timezone": "UTC"})
+    assert r.status_code == 200 and all(o["ts"] % 60 == 0 for o in r.json()["occurrences"])

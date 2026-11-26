@@ -10,8 +10,8 @@ log = logging.getLogger("tank_tactics")
 
 
 async def run_scheduler(hub: Hub) -> None:
-    """Runs once immediately on boot, which catches up any intervals missed while the
-    server was down, then sleeps until the next due event or until a change wakes it."""
+    """Runs once immediately on boot, which catches up any AP occurrences missed while
+    the server was down, then sleeps until the next due event or until a change wakes it."""
     svc = hub.service
     max_sleep = svc.cfg.scheduler_max_sleep
     while True:
