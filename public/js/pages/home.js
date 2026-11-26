@@ -1,6 +1,6 @@
 // The start page: sign-in, your games, join by code, create a game.
 import { accountApi, authConfig, browserZone, serverDefaults } from '../api.js';
-import { claimSeat, mountGoogleButton, signOut } from '../auth.js';
+import { claimSeat, linkSavedSeats, mountGoogleButton, signOut } from '../auth.js';
 import { configForm } from '../config-form.js';
 import { $, h } from '../dom.js';
 import { toast } from '../notify.js';
@@ -26,7 +26,11 @@ export async function renderHome() {
   const signInOn = !!auth.google_client_id;
   let remote = [];
   if (signInOn && account.token()) {
-    try { remote = await accountApi('GET', '/api/me/games'); } catch (e) { if (!account.token()) toast(e.message, 'error'); }
+    // Runs right after signing in too (that re-renders this page), so seats joined before then get linked.
+    try {
+      await linkSavedSeats();
+      remote = await accountApi('GET', '/api/me/games');
+    } catch (e) { if (!account.token()) toast(e.message, 'error'); }
   }
   const user = signInOn ? account.get()?.user : null;
   const gButton = signInOn && !user ? h('div', { class: 'gsi-button' }) : null;

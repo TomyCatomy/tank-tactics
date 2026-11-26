@@ -155,6 +155,38 @@ def test_seats_are_linked_and_claimable_on_another_device(acct):
         assert state["viewer_id"] == joined["player_id"]
 
 
+def test_seats_joined_before_signing_in_can_be_linked(acct):
+    client, _, _ = acct
+    host = client.post("/api/games", json={"name": "Ann"}).json()  # anonymous
+    gid = host["game_id"]
+    ann = sign_in(client)
+    assert client.get("/api/me/games", headers=bearer(ann)).json() == []
+    r = client.post("/api/me/seats/link", json={"tokens": [host["token"], "not-a-token"]}, headers=bearer(ann))
+    assert r.status_code == 200 and r.json() == {"linked": 1}
+    assert [g["game_id"] for g in client.get("/api/me/games", headers=bearer(ann)).json()] == [gid]
+    # Idempotent, and now claimable from another device.
+    assert client.post("/api/me/seats/link", json={"tokens": [host["token"]]}, headers=bearer(ann)).json() == {"linked": 0}
+    claimed = client.post(f"/api/me/games/{gid}/claim", headers=bearer(ann)).json()
+    assert claimed["player_id"] == host["player_id"]
+    assert client.post("/api/me/seats/link", json={"tokens": [host["token"]]}).status_code == 401
+
+
+def test_linking_never_takes_another_accounts_seat_or_a_second_seat(acct):
+    client, _, _ = acct
+    ann, bob = sign_in(client, "sub-ann", "Ann"), sign_in(client, "sub-bob", "Bob")
+    host = client.post("/api/games", json={"name": "Ann"}, headers=bearer(ann)).json()
+    gid = host["game_id"]
+    seat2 = client.post(f"/api/games/{gid}/join", json={"name": "Seat 2"}).json()  # anonymous, e.g. debug local seats
+    # Bob holding Ann's token doesn't make it his; Ann already has a seat here, so seat 2 stays unlinked.
+    assert client.post("/api/me/seats/link", json={"tokens": [host["token"]]}, headers=bearer(bob)).json() == {"linked": 0}
+    assert client.post("/api/me/seats/link", json={"tokens": [seat2["token"]]}, headers=bearer(ann)).json() == {"linked": 0}
+    assert client.get("/api/me/games", headers=bearer(bob)).json() == []
+    # A seat that left the lobby can't be linked.
+    left = client.post(f"/api/games/{gid}/join", json={"name": "Gone"}).json()
+    client.post(f"/api/games/{gid}/leave", headers=bearer(left["token"]))
+    assert client.post("/api/me/seats/link", json={"tokens": [left["token"]]}, headers=bearer(bob)).json() == {"linked": 0}
+
+
 def test_claim_needs_a_seat_in_that_game(acct):
     client, _, _ = acct
     ann = sign_in(client, "sub-ann", "Ann")

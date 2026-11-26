@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Annotated, Any
 
-from pydantic import AfterValidator, BaseModel, ConfigDict
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field
 from pydantic_core import PydanticCustomError
 
 from ..config import is_valid_unicode
@@ -99,6 +99,14 @@ class AuthConfig(BaseModel):
 
 class GoogleSignInRequest(_Body):
     credential: str  # the ID token from Google Identity Services
+
+
+class LinkSeatsRequest(_Body):
+    tokens: list[str] = Field(max_length=500)  # seat tokens saved on this device
+
+
+class SeatsLinked(BaseModel):
+    linked: int  # seats newly linked to the account
 
 
 class UserOut(BaseModel):

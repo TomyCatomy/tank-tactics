@@ -351,6 +351,19 @@ class Store:
                 select(PlayerRow.id).where(PlayerRow.game_id == game_id, PlayerRow.user_id == user_id)
             ).first()
 
+    def link_seat(self, game_id: str, player_id: str, user_id: str) -> bool:
+        """Link an anonymous seat to this user. False (and no change) if the seat already
+        belongs to an account, or the user already holds another seat in this game."""
+        with self._lock, self._sessions.begin() as session:
+            row = session.get(PlayerRow, player_id)
+            if row is None or row.game_id != game_id or row.user_id is not None:
+                return False
+            taken = select(PlayerRow.id).where(PlayerRow.game_id == game_id, PlayerRow.user_id == user_id)
+            if session.scalars(taken).first() is not None:
+                return False
+            row.user_id = user_id
+            return True
+
     def add_seat_token(self, token_hash: str, game_id: str, player_id: str, now: float) -> None:
         with self._lock, self._sessions.begin() as session:
             session.add(SeatTokenRow(token_hash=token_hash, player_id=player_id, game_id=game_id, created_at=now))
