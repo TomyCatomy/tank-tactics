@@ -31,7 +31,7 @@ The frontend (`public/`) is plain JS with no build step and is served by the API
 
 Layers, from the inside out. Each layer only depends on the ones above it:
 
-0. **`tank_tactics/recurrence.py`**: pure RFC 5545 RRULE support for the AP schedule (`python-dateutil` + `zoneinfo`): parsing (dateutil's `rrulestr`) plus the game's own checks, cached `Schedule` objects (`next_after`, `between`, `upcoming`), DST handling, summaries and previews. It imports nothing from the package, so `config` can validate with it.
+0. **`tank_tactics/recurrence/`**: pure RFC 5545 RRULE support for the AP schedule (`python-dateutil` + `zoneinfo`), re-exported from its `__init__`: `rules` (parsing with dateutil's `rrulestr` plus the game's own checks), `zones`, `cadence` and `sampling` (how often a rule may fire), `schedule` (cached `Schedule` objects: `next_after`, `between`, `upcoming`, DST handling) and `describe` (summaries). It imports nothing from the rest of the project, so `config` can validate with it.
 1. **`tank_tactics/config.py`**: `GameConfig` is a strict, frozen pydantic model split into sections (`board`, `start`, `ap`, `actions`, `jury`, `players`, `debug`, `notifications`, plus top-level `fog_of_war` and `max_duration_seconds`). Lobby overrides are partial nested dicts deep-merged by `with_overrides`; unknown keys and type coercion (`"5"`→`5`) are rejected. `ServerConfig` is the process config.
 2. **`tank_tactics/game/`**: pure rules engine with no I/O, clock or global randomness. Callers pass `now` (epoch seconds) and a `random.Random`. Public API is re-exported from `game/__init__.py`, and callers use `from tank_tactics import game` then `game.move(...)`.
 3. **`tank_tactics/store.py`**: SQLAlchemy 2.0 ORM over SQLite, which converts between rows and the `game` dataclasses.
@@ -60,6 +60,10 @@ Two suites, each with its own `conftest.py` (fixtures). Plain helpers shared by 
 
 - `tests/backend/`: `test_game.py` (pure rules), `test_service.py` (persistence and restart catch-up on a real SQLite file via `tmp_path`, concurrency with threads and a barrier, chat privacy), `test_api.py` (the `api` fixture: FastAPI `TestClient`, needs `httpx2`; includes WebSocket pushes).
 - `tests/frontend/`: Playwright drives the real page in headless Edge (or bundled Chromium) against uvicorn in a thread. The conftest provides `server` (a `LiveServer` that can `stop()`/`start()` to simulate outages), `browser` and `page`, and marks every test here `ui`. This is the only coverage of `public/app.js`, so add a test here for client bugs. Skipped if no browser can be launched.
+
+## Code size
+
+A Python file is at most 150 lines unless there's a good reason for it to be longer; if there is one, say what it is in the file's docstring. Split a module that would grow past that into a package of focused modules that re-exports its public API from `__init__.py`, as `tank_tactics/recurrence/` does.
 
 ## Commits
 

@@ -9,6 +9,8 @@ import pytest
 
 from tank_tactics import game, recurrence
 from tank_tactics.config import ConfigError, GameConfig
+from tank_tactics.recurrence.rules import compile_rule
+from tank_tactics.recurrence.zones import epoch, wall
 
 from ..support import DAY, T0, make_active, p
 
@@ -192,12 +194,12 @@ def test_schedule_matches_a_brute_force_reference():
         for rule in rules:
             start = 1_760_000_000 + rng.randrange(30 * DAY) + 0.5
             end = start + 400 * DAY
-            raw = recurrence._compile(rule, recurrence._wall(int(start), zone))
+            raw = compile_rule(rule, wall(int(start), zone))
             ref = []
             for w in raw:
-                if w > recurrence._wall(end, zone) + timedelta(hours=4):
+                if w > wall(end, zone) + timedelta(hours=4):
                     break
-                e = recurrence._epoch(w, zone)
+                e = epoch(w, zone)
                 if start < e <= end:
                     ref.append(e)
             ref = sorted(set(ref))
