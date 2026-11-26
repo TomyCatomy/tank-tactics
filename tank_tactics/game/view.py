@@ -65,9 +65,8 @@ def view_for(state: GameState, viewer_id: str | None) -> dict[str, Any]:
             "next_ap_tick_at": next_ap_tick_at(state),
             "next_jury_close_at": next_jury_close_at(state),
             "ends_at": game_ends_at(state),
-            # AP schedule (the jury closes on the same occurrences): rule, zone, summary, next ticks.
-            "schedule": schedule_view(
-                state, state.last_ap_tick_at if state.status == "active" else None, game_ends_at(state)),
+            # AP schedule (the jury closes on the same occurrences): rule, zone, summary.
+            "schedule": schedule_view(state),
         },
         "viewer_id": viewer.id if viewer else None,
         "players": players,

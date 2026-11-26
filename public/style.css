@@ -181,9 +181,6 @@ details.adv > summary { cursor: pointer; min-height: var(--tap); display: flex; 
 .sched-summary { margin: 0 0 6px; overflow-wrap: anywhere; }
 .sched-summary.bad { color: var(--danger); }
 .sched-preview .notice { margin: 0 0 6px; }
-.sched-next { margin: 4px 0 0; padding-left: 1.4em; font-size: .88rem; }
-.sched-next li { padding: 2px 0; }
-.sched-next .badge { margin-left: 6px; }
 .sched-line { margin-top: 4px; }
 
 /* Game layout */

@@ -42,18 +42,10 @@ class SchedulePreviewRequest(_Body):
     timezone: UnicodeText
 
 
-class ScheduleOccurrence(BaseModel):
-    ts: float
-    local: str  # ISO 8601 in the schedule's zone, e.g. 2026-11-27T09:00+02:00
-    utc_offset: str
-    dst_shift: bool  # the UTC offset differs from the previous occurrence's (or the start's)
-
-
 class SchedulePreview(BaseModel):
     rrule: str  # normalized
     timezone: str
     summary: str
-    occurrences: list[ScheduleOccurrence]
 
 
 class RemovePlayerRequest(_Body):

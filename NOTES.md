@@ -139,12 +139,12 @@ Where the spec left room for interpretation, this is what I chose and why.
     the usual unknown-field 400, and a game stored with them loads with the default
     schedule (`from_stored` drops removed fields), so a daily game keeps ticking daily,
     on the start's minute.
-33. **Preview.** `POST /api/schedule/preview` validates exactly as the lobby does and lists
-    the next 5 occurrences if a game started now, with local time, UTC offset and a
-    `dst_shift` flag (the offset differs from the previous occurrence's). The client uses
-    it for the summary, the preview and raw-rule errors. The client only parses and writes
-    rules (with rrule.js, vendored in `public/vendor/`) to map them to the presets and
-    builder; validation, summaries and occurrences all come from the server. It is rate limited per client IP.
+33. **Preview.** `POST /api/schedule/preview` validates exactly as the lobby does and
+    returns the normalized rule and its summary. The client uses it for the live summary
+    and raw-rule errors. It doesn't list upcoming ticks: the lobby used to show the next 5,
+    and the owner removed that. The client only parses and writes rules (with rrule.js,
+    vendored in `public/vendor/`) to map them to the presets and builder; validation and
+    summaries come from the server. It is rate limited per client IP.
 34. **Lobby editor round trip.** The rule string is the source of truth. A rule the presets
     or builder can express exactly is shown there (e.g. `BYDAY=-1FR` shows as "Monthly,
     last Friday"), and the stored text isn't changed until the host edits it through

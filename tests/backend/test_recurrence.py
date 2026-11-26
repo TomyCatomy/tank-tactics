@@ -9,6 +9,8 @@ import pytest
 
 from tank_tactics import game, recurrence
 from tank_tactics.config import ConfigError, GameConfig
+from tank_tactics.recurrence.rules import compile_rule
+from tank_tactics.recurrence.zones import epoch, wall
 
 from ..support import DAY, T0, make_active, p
 
@@ -192,12 +194,12 @@ def test_schedule_matches_a_brute_force_reference():
         for rule in rules:
             start = 1_760_000_000 + rng.randrange(30 * DAY) + 0.5
             end = start + 400 * DAY
-            raw = recurrence._compile(rule, recurrence._wall(int(start), zone))
+            raw = compile_rule(rule, wall(int(start), zone))
             ref = []
             for w in raw:
-                if w > recurrence._wall(end, zone) + timedelta(hours=4):
+                if w > wall(end, zone) + timedelta(hours=4):
                     break
-                e = recurrence._epoch(w, zone)
+                e = epoch(w, zone)
                 if start < e <= end:
                     ref.append(e)
             ref = sorted(set(ref))
@@ -306,7 +308,7 @@ def test_time_limit_inside_a_collapsed_catch_up():
     assert entries[1].event_type == "game_over" and entries[1].ts == T0 + 100 * 3600
 
 
-def test_view_lists_the_schedule_and_next_occurrences():
+def test_view_lists_the_schedule():
     start = at(JLM, 2026, 11, 26, 12, 0)
     s = make_active({"a": (0, 0), "b": (5, 5)}, now=start,
                     ap={"rrule": "FREQ=DAILY;BYHOUR=9;BYMINUTE=0", "timezone": "Asia/Jerusalem"},
@@ -315,16 +317,6 @@ def test_view_lists_the_schedule_and_next_occurrences():
     assert sched["rrule"] == sched["effective_rrule"] == "FREQ=DAILY;BYHOUR=9;BYMINUTE=0"
     assert sched["timezone"] == "Asia/Jerusalem"
     assert sched["summary"] == "Every day at 09:00 (Asia/Jerusalem)"
-    # Only occurrences before the time limit (26th 12:00 + 3 days).
-    assert [local(t, JLM)[:16] for t in sched["upcoming"]] == ["2026-11-27T09:00", "2026-11-28T09:00", "2026-11-29T09:00"]
-    lobby = game.create_game("x", "h", "H", GameConfig(), T0)
-    assert game.view_for(lobby, "h")["game"]["schedule"]["upcoming"] == []
-
-
-def test_preview_flags_dst_shifts():
-    occ = recurrence.preview("FREQ=DAILY;BYHOUR=9;BYMINUTE=0", "Asia/Jerusalem", at(JLM, 2026, 3, 25, 12, 0), 3)
-    assert [(o["local"], o["dst_shift"]) for o in occ] == [
-        ("2026-03-26T09:00+02:00", False), ("2026-03-27T09:00+03:00", True), ("2026-03-28T09:00+03:00", False)]
 
 
 # -- round minutes and the monthly cadence --------------------------------------------------------

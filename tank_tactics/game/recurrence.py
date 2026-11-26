@@ -35,15 +35,11 @@ def occurrences_between(
     return (0, [], None) if s is None else s.between(a, b, keep, before)
 
 
-def schedule_view(state: GameState, after: float | None, until: float | None, count: int = 5) -> dict[str, Any]:
-    """What the client shows: the rule, zone, a summary and the next few occurrences
-    (after ``after``, and before ``until``, the time limit, when there is one)."""
+def schedule_view(state: GameState) -> dict[str, Any]:
+    """What the client shows: the configured rule and zone, the ones in effect (debug
+    fast ticks replace them) and a summary of each."""
     c = state.config
     rule, tz = c.effective_schedule
-    upcoming: list[float] = []
-    s = schedule_of(state)
-    if s is not None and after is not None:
-        upcoming = [t for t in s.upcoming(after, count) if until is None or t < until]
     return {
         "rrule": c.ap.rrule,
         "timezone": c.ap.timezone,
@@ -51,5 +47,4 @@ def schedule_view(state: GameState, after: float | None, until: float | None, co
         "effective_rrule": rule,
         "effective_timezone": tz,
         "effective_summary": recurrence.describe(rule, tz) + (" (debug fast ticks)" if c.debug.fast_ticks else ""),
-        "upcoming": upcoming,
     }
