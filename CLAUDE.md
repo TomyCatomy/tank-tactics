@@ -20,7 +20,8 @@ python -m venv .venv && .venv/Scripts/python -m pip install -r requirements-dev.
 .venv/Scripts/python -m pyflakes tank_tactics scripts tests   # lint (pyflakes is not pinned in requirements)
 .venv/Scripts/python scripts/simulate.py --players 12 --runs 100 --quiet   # bot balance simulation
 # CI: .github/workflows/tests.yml runs the whole suite (browser tests included) on every push
-# AWS deploy (EC2 + CloudFront): GitHub Actions > "AWS deploy" > Run workflow on main; see deploy/aws/README.md
+# AWS deploy (EC2 + CloudFront, staging and production on one server): pushes to main deploy staging;
+# production: GitHub Actions > "AWS deploy" > Run workflow on main, redeploy production; see deploy/aws/README.md
 ```
 
 Server settings come from environment variables read by `ServerConfig` (pydantic-settings): `PORT`, `DB_PATH` (default `data/tank-tactics.db`), `HOST`, rate limits, etc. For quick manual play, run with `ALLOW_DEBUG=true` and create a game with `debug.fast_ticks` on so AP arrives every few seconds instead of every 24 h. `ALLOW_DEBUG` defaults to off, which hides the `debug.*` options and makes the API reject them; `make_service` turns it on for tests.
