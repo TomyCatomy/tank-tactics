@@ -19,6 +19,7 @@ python -m venv .venv && .venv/Scripts/python -m pip install -r requirements-dev.
 .venv/Scripts/python -m pytest -q -m "not ui"         # skip the (slower) browser tests
 .venv/Scripts/python -m pyflakes tank_tactics scripts tests   # lint (pyflakes is not pinned in requirements)
 .venv/Scripts/python scripts/simulate.py --players 12 --runs 100 --quiet   # bot balance simulation
+# CI: .github/workflows/tests.yml runs the whole suite (browser tests included) on every push
 # AWS deploy (EC2 + CloudFront): GitHub Actions > "AWS deploy" > Run workflow on main; see deploy/aws/README.md
 ```
 

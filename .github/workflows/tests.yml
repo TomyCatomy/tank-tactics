@@ -1,0 +1,37 @@
+# Runs the full test suite on every push, for the pushed branch.
+# To block merging when it fails, add "tests" as a required status check in a branch
+# ruleset (Settings > Rules > Rulesets) targeting the branches you merge into.
+name: Tests
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true # a newer push to the same branch supersedes the older run
+
+jobs:
+  tests:
+    name: tests
+    # Windows, so the browser tests render with Edge and Segoe UI like local runs do: on
+    # Linux, system-ui falls back to the much wider DejaVu Sans and the phone-layout tests overflow.
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12" # matches the production server (deploy/aws/userdata.sh)
+          cache: pip
+          cache-dependency-path: requirements*.txt
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Run tests # browser tests use the runner's preinstalled Edge
+        run: python -m pytest -q -rs
