@@ -167,8 +167,7 @@ def test_payload_field_names(api):
     assert set(state["game"]["config"]["ap"]) == {"rrule", "timezone", "cap"}
     sched = state["game"]["schedule"]
     assert set(sched) == {"rrule", "timezone", "summary", "effective_rrule", "effective_timezone",
-                          "effective_summary", "upcoming"}
-    assert sched["upcoming"][0] == state["game"]["next_ap_tick_at"] and len(sched["upcoming"]) == 5
+                          "effective_summary"}
     d = client.get("/api/defaults").json()
     assert "Asia/Jerusalem" in d["timezones"] and d["config"]["ap"]["rrule"] == "FREQ=DAILY"
 
@@ -276,11 +275,8 @@ def test_schedule_preview(api):
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["rrule"] == "FREQ=DAILY;BYHOUR=9;BYMINUTE=0"
-    assert body["summary"] == "Every day at 09:00 (Asia/Jerusalem)"
-    assert [o["local"] for o in body["occurrences"]] == [
-        "2026-03-26T09:00+02:00", "2026-03-27T09:00+03:00", "2026-03-28T09:00+03:00",
-        "2026-03-29T09:00+03:00", "2026-03-30T09:00+03:00"]
-    assert [o["dst_shift"] for o in body["occurrences"]] == [False, True, False, False, False]
+    assert body == {"rrule": "FREQ=DAILY;BYHOUR=9;BYMINUTE=0", "timezone": "Asia/Jerusalem",
+                    "summary": "Every day at 09:00 (Asia/Jerusalem)"}
 
     for rule, tz, needle in [("FREQ=DAILY;COUNT=2", "UTC", "rrule: COUNT is not allowed"),
                              ("FREQ=DAILY", "Nowhere/Land", "timezone: unknown time zone"),
@@ -302,4 +298,4 @@ def test_schedule_preview_refuses_seconds_and_skipped_months(api, locked_api, wh
         r = client.post("/api/schedule/preview", json={"rrule": rule, "timezone": "UTC"})
         assert r.status_code == 400 and needle in r.json()["error"]["message"], r.text
     r = client.post("/api/schedule/preview", json={"rrule": "FREQ=MONTHLY;BYDAY=TH;BYSETPOS=-1", "timezone": "UTC"})
-    assert r.status_code == 200 and all(o["ts"] % 60 == 0 for o in r.json()["occurrences"])
+    assert r.status_code == 200

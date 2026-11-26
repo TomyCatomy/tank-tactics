@@ -25,8 +25,7 @@ def defaults(service: ServiceDep) -> dict[str, Any]:
 @router.post("/schedule/preview")
 def schedule_preview(body: SchedulePreviewRequest, service: ServiceDep, request: Request) -> SchedulePreview:
     """Check an AP schedule (``ap.rrule`` + ``ap.timezone``) the way the lobby will, and
-    return a human-readable summary and the next 5 occurrences if a game started now
-    (all on round minutes).
+    return the normalized rule and a human-readable summary.
     An invalid rule is a 400 with code ``invalid_schedule`` and a message to show inline."""
     client = request.client.host if request.client else "unknown"
     if not service.preview_limiter.allow(client):

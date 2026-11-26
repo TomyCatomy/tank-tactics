@@ -33,6 +33,7 @@ from __future__ import annotations
 import bisect
 import calendar
 import heapq
+import itertools
 import math
 import re
 import threading
@@ -376,7 +377,6 @@ class Schedule:
         self.anchor = self.dtstart if parts["FREQ"] == "SECONDLY" else math.floor(self.dtstart / 60) * 60.0
         self._lock = threading.Lock()
         self._next: dict[float, float | None] = {}
-        self._upcoming: dict[tuple[float, int], tuple[float, ...]] = {}
         if self.period is None:
             self._start_wall = _wall(math.floor(self.anchor), self.zone)
             self._rrule = _compile(self.rule, self._start_wall)
@@ -410,22 +410,8 @@ class Schedule:
         return nxt
 
     def upcoming(self, t: float, n: int) -> list[float]:
-        """The next ``n`` occurrences after ``t`` (cached: every game view asks for them)."""
-        key = (t, n)
-        with self._lock:
-            hit = self._upcoming.get(key)
-        if hit is not None:
-            return list(hit)
-        out: list[float] = []
-        for x in self.iter_after(t):
-            out.append(x)
-            if len(out) >= n:
-                break
-        with self._lock:
-            if len(self._upcoming) > 64:
-                self._upcoming.clear()
-            self._upcoming[key] = tuple(out)
-        return out
+        """The next ``n`` occurrences after ``t``."""
+        return list(itertools.islice(self.iter_after(t), n))
 
     def between(self, a: float, b: float, keep: int, before: float = math.inf) -> tuple[int, list[float], float | None]:
         """Occurrences in ``(a, b]`` that are also earlier than ``before``: (how many, the
@@ -608,31 +594,8 @@ def _duration(seconds: int) -> str:
     return "second" if seconds == 1 else f"{seconds} seconds"
 
 
-def preview(rule: str, tz: str, start: float, count: int = 5) -> list[dict[str, Any]]:
-    """The first ``count`` occurrences of a schedule starting at ``start``, each with
-    its local time (ISO 8601 with offset) and whether the UTC offset changed since the
-    previous one (a DST shift)."""
-    s = Schedule(rule, tz, start)  # not cached: previews start at arbitrary moments
-    zone = ZoneInfo(tz)
-    prev = datetime.fromtimestamp(start, zone).utcoffset()
-    out = []
-    for t in s.upcoming(start, count):
-        local = datetime.fromtimestamp(t, zone)
-        off = local.utcoffset()
-        out.append({"ts": t, "local": local.isoformat(timespec="minutes" if local.second == 0 else "seconds"), "utc_offset": _offset(off),
-                    "dst_shift": off != prev})
-        prev = off
-    return out
-
-
-def _offset(off: timedelta | None) -> str:
-    total = int((off or timedelta()).total_seconds() // 60)
-    sign = "+" if total >= 0 else "-"
-    return f"{sign}{abs(total) // 60:02d}:{abs(total) % 60:02d}"
-
-
 __all__ = [
     "DEFAULT_RULE", "DEFAULT_TIMEZONE", "MAX_GAP_SECONDS", "MIN_GAP_SECONDS", "RecurrenceError", "RuleStats",
     "Schedule", "check_timezone", "debug_rule", "describe", "normalize_rule", "on_round_minutes",
-    "parse_rule", "preview", "round_up_to_minute", "rule_stats", "schedule", "timezones", "validate",
+    "parse_rule", "round_up_to_minute", "rule_stats", "schedule", "timezones", "validate",
 ]

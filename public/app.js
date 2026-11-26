@@ -475,16 +475,6 @@
     ];
   }
 
-  /** e.g. "Fri, Nov 27, 09:00 GMT+2" in the schedule's zone (the year only when it isn't this year): one line on a phone. */
-  function fmtOccurrence(ts, tz) {
-    const d = new Date(ts * 1000);
-    try {
-      const year = d.getFullYear() !== new Date().getFullYear() ? { year: 'numeric' } : {};
-      return new Intl.DateTimeFormat([], { timeZone: tz, weekday: 'short', day: 'numeric', month: 'short', ...year,
-        hour: '2-digit', minute: '2-digit', timeZoneName: 'short' }).format(d);
-    } catch { return fmtTime(ts); }
-  }
-
   /**
    * The schedule part of the config form. `ap` is the config's ap section. Returns an element
    * with getValues() -> {rrule, timezone}, summaryText(), setDebug(debug) and an onSummary hook.
@@ -553,18 +543,17 @@
       rawIn, rawErr,
       h('div', { class: 'hint' }, 'The schedule starts when the game starts and runs until it ends. Ticks are on whole minutes, at most one a minute, and at least one every calendar month.'));
 
-    // -- shared: time zone, summary, next occurrences
+    // -- shared: time zone and summary
     const tzSel = h('select', { id: `${uid}-tz`, disabled: dis }, h('option', { value: st.tz, selected: true }, st.tz));
     const summaryEl = h('p', { class: 'sched-summary', id: `${uid}-summary`, 'aria-live': 'polite' });
     const debugEl = h('p', { class: 'notice small' });
-    const nextList = h('ol', { class: 'sched-next', 'aria-label': 'Next AP ticks' });
 
     const root = h('div', { class: 'wide sched stack', role: 'group', 'aria-labelledby': `${uid}-label` },
       h('label', { id: `${uid}-label`, for: `${uid}-preset`, class: 'sched-title' }, h('span', {}, 'AP schedule: +1 AP for every living tank')),
       h('div', { class: 'sched-row' }, presetSel, timeLabel, hoursRow),
       builder, advanced,
       h('label', { for: `${uid}-tz`, class: 'sched-tz' }, h('span', {}, 'Time zone'), tzSel),
-      h('div', { class: 'sched-preview' }, summaryEl, debugEl, h('div', { class: 'muted small' }, 'Next 5 AP ticks if the game started now:'), nextList));
+      h('div', { class: 'sched-preview' }, summaryEl, debugEl));
 
     // -- state -> controls
     const timeOf = (m) => `${pad2(m?.hour ?? 9)}:${pad2(m?.minute ?? 0)}`;
@@ -773,7 +762,6 @@
         summaryEl.textContent = e.code === 'invalid_schedule' ? `Invalid schedule: ${e.message}` : e.message;
         summaryEl.classList.add('bad');
         if (e.code === 'invalid_schedule') { rawErr.textContent = e.message; rawIn.setAttribute('aria-invalid', 'true'); }
-        fill(nextList);
         root.onSummary?.();
         return;
       }
@@ -783,9 +771,6 @@
       fill(summaryEl, h('b', {}, res.summary));
       rawErr.textContent = '';
       rawIn.removeAttribute('aria-invalid');
-      fill(nextList, res.occurrences.map((o) => h('li', {},
-        h('time', { datetime: o.local }, fmtOccurrence(o.ts, tz)),
-        o.dst_shift ? h('span', { class: 'badge warn', title: `UTC offset is now ${o.utc_offset}` }, 'DST change') : null)));
       root.onSummary?.();
     }
 

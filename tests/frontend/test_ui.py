@@ -501,8 +501,8 @@ def test_desktop_lobby_shows_all_panels_without_tabs(server, page):
 def open_create_form(page):
     page.locator(".create-fold > summary").click()
     page.get_by_role("button", name="Create game").wait_for()
-    # The schedule preview loads asynchronously and makes the form taller; let it settle first.
-    page.wait_for_selector(".sched-next li")
+    # The schedule summary loads asynchronously; let the form settle first.
+    page.wait_for_selector(".sched-summary b")
 
 
 def test_create_form_is_folded_until_opened(server, page):
@@ -611,7 +611,6 @@ def test_phone_top_bar_stays_visible(server, browser, width, height):
 def open_schedule(page, server):
     page.goto(server.url)
     open_create_form(page)
-    page.wait_for_selector(".sched-next li")
     return page.locator(".sched")
 
 
@@ -623,7 +622,7 @@ def wait_summary(page, text: str) -> None:
     page.locator(".sched-summary", has_text=text).wait_for()
 
 
-def test_schedule_preset_sets_the_rule_and_previews_it(server, page):
+def test_schedule_preset_sets_the_rule_and_summarises_it(server, page):
     sched = open_schedule(page, server)
     zone = page.evaluate("Intl.DateTimeFormat().resolvedOptions().timeZone")
     assert sched.get_by_label("Time zone").input_value() == zone  # defaults to the browser's zone
@@ -642,7 +641,6 @@ def test_schedule_preset_sets_the_rule_and_previews_it(server, page):
     at.dispatch_event("change")
     wait_summary(page, "Every weekday (Mon–Fri) at 09:30")
     assert raw_rule(page) == "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR;BYHOUR=9;BYMINUTE=30"
-    assert sched.locator(".sched-next li").count() == 5
 
     preset.select_option("hours")
     sched.get_by_label("Hours between ticks").fill("6")
@@ -658,7 +656,7 @@ def test_schedule_preset_sets_the_rule_and_previews_it(server, page):
     page.wait_for_selector(".game-code")
     if page.viewport_size["width"] < 900:
         page.get_by_role("tab", name="Settings").click()
-    page.wait_for_selector(".sched-next li")
+    page.wait_for_selector(".sched-summary b")
     assert page.locator(".sched-row select").input_value() == "weekdays"
     assert raw_rule(page) == "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR;BYHOUR=9;BYMINUTE=30"
     assert page.locator(".sched-tz select").input_value() == zone
@@ -737,7 +735,6 @@ def test_schedule_raw_rule_validation_and_round_trip(server, page):
     raw.fill("FREQ=DAILY;COUNT=3")
     adv.locator(".error-text", has_text="COUNT is not allowed").wait_for()
     assert raw.get_attribute("aria-invalid") == "true"
-    assert sched.locator(".sched-next li").count() == 0
     raw.fill("FREQ=SECONDLY;INTERVAL=5")
     adv.locator(".error-text", has_text="FREQ=SECONDLY is not allowed").wait_for()
     raw.fill("FREQ=MONTHLY;BYMONTHDAY=31")
@@ -764,20 +761,6 @@ def test_schedule_raw_rule_validation_and_round_trip(server, page):
     sched.locator(".sched-row select").select_option("daily")
     wait_summary(page, "Every day at")
     assert raw.input_value().startswith("FREQ=DAILY;BYHOUR=")
-
-
-def test_schedule_preview_lists_next_occurrences_in_the_zone(server, page):
-    sched = open_schedule(page, server)
-    sched.locator(".sched-adv summary").click()
-    sched.get_by_label("Recurrence rule", exact=False).fill("FREQ=DAILY;BYHOUR=9;BYMINUTE=0")
-    sched.get_by_label("Time zone").select_option("America/New_York")
-    wait_summary(page, "Every day at 09:00 (America/New_York)")
-    items = sched.locator(".sched-next li time")
-    assert items.count() == 5
-    datetimes = [items.nth(i).get_attribute("datetime") for i in range(5)]
-    assert all(d[11:16] == "09:00" and d[16:] in ("-05:00", "-04:00") for d in datetimes), datetimes
-    shown = items.first.inner_text()
-    assert "09:00" in shown or "9:00" in shown
 
 
 @pytest.mark.parametrize(("width", "height"), [(320, 568), (390, 664)], ids=["320", "390"])
@@ -807,7 +790,7 @@ def test_lobby_schedule_round_trips_and_the_jury_follows_it(server, browser):
         page = browser.new_context(viewport={"width": 1280, "height": 900}).new_page()
         try:
             open_as(page, server, who)
-            page.wait_for_selector(".sched-next li")
+            page.wait_for_selector(".sched-summary b")
             preset = page.locator(".sched-row select")
             assert preset.input_value() == "monthnth" and "4th Thursday" in page.locator(".sched-row select option:checked").inner_text()
             assert preset.is_enabled() == editable
@@ -842,6 +825,5 @@ def test_monthly_presets_never_skip_a_month(server, browser, date, day_preset, l
             sched.locator(".sched-row select").select_option("monthlastday")
             wait_summary(page, "Monthly on the last day")
             assert raw_rule(page).startswith("FREQ=MONTHLY;BYMONTHDAY=-1;")
-            assert sched.locator(".sched-next li").count() == 5
     finally:
         page.context.close()

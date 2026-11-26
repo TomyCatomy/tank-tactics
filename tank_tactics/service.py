@@ -250,18 +250,17 @@ class GameService:
 
         self._mutate(game_id, apply)
 
-    def preview_schedule(self, rule: Any, tz: Any, count: int = 5) -> dict[str, Any]:
-        """Validate an AP schedule as the lobby would and list its next occurrences if a
-        game started now. Lets the client show a live summary without its own RRULE code."""
+    def preview_schedule(self, rule: Any, tz: Any) -> dict[str, Any]:
+        """Validate an AP schedule as the lobby would and summarise it, so the client can
+        show a live summary and inline errors."""
         field = "timezone"
         try:
             recurrence.check_timezone(tz)
             field = "rrule"
             norm = recurrence.validate(rule, tz)
-            occurrences = recurrence.preview(norm, tz, self.clock(), count)
         except recurrence.RecurrenceError as e:
             raise ServiceError("invalid_schedule", f"{field}: {e}") from None
-        return {"rrule": norm, "timezone": tz, "summary": recurrence.describe(norm, tz), "occurrences": occurrences}
+        return {"rrule": norm, "timezone": tz, "summary": recurrence.describe(norm, tz)}
 
     def start_game(self, game_id: str, player_id: str) -> None:
         self._mutate(game_id, lambda s: game.start_game(s, player_id, self.clock(), self.rng))

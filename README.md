@@ -176,7 +176,7 @@ All state-changing requests use `Authorization: Bearer <player token>`.
 | Method & path | Body | |
 |---|---|---|
 | `GET /api/defaults` | | default config, `allow_debug`, and the accepted `timezones` |
-| `POST /api/schedule/preview` | `{rrule, timezone}` | validate an AP schedule as the lobby would; `{rrule, timezone, summary, occurrences: [{ts, local, utc_offset, dst_shift}]}` (next 5 from now), or 400 `invalid_schedule` |
+| `POST /api/schedule/preview` | `{rrule, timezone}` | validate an AP schedule as the lobby would; `{rrule, timezone, summary}`, or 400 `invalid_schedule` |
 | `POST /api/games` | `{name, config?}` | create; returns `{game_id, player_id, token}` |
 | `GET /api/games/{id}` | | public lobby info for the invite page |
 | `POST /api/games/{id}/join` | `{name}` | lobby only |
