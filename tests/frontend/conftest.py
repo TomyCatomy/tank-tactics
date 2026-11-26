@@ -7,6 +7,7 @@ Playwright or a browser isn't available.
 """
 from __future__ import annotations
 
+import os
 import socket
 import threading
 import time
@@ -122,7 +123,10 @@ def browser():
             except Exception:
                 continue
         if launched is None:
-            pytest.skip("no browser available: install Edge or run `python -m playwright install chromium`")
+            message = "no browser available: install Edge or run `python -m playwright install chromium`"
+            if os.environ.get("CI"):  # in CI a missing browser must not turn into a green run
+                pytest.fail(message)
+            pytest.skip(message)
         yield launched
         launched.close()
 
