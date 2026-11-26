@@ -39,7 +39,7 @@ git status --short && git diff --stat main...HEAD
 | `--fuzz-games N` | More random games. Use 100+ after changing rules in `tank_tactics/game/` |
 | `--list` | Show all scenarios |
 
-Exit code 0 means all passed, 1 means failures, 2 means the harness couldn't run. A browser that can't launch makes scenarios **SKIPPED**, which is not a pass: say so in the report, because the browser scenarios are the main coverage of `public/app.js`.
+Exit code 0 means all passed, 1 means failures, 2 means the harness couldn't run. A browser that can't launch makes scenarios **SKIPPED**, which is not a pass: say so in the report, because the browser scenarios are the main coverage of `public/js/`.
 
 **4. Inspect the UI on PC and phones**, in the background alongside step 3 if you can (about 2 minutes):
 

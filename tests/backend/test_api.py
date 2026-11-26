@@ -144,7 +144,7 @@ def test_static_and_defaults(api):
     assert client.get("/api/defaults").json()["config"]["fog_of_war"] == "off"
     r = client.get("/")
     assert r.status_code == 200 and "Tank Tactics" in r.text
-    for path in ("/static/app.js", "/static/style.css"):
+    for path in ("/static/js/main.js", "/static/style.css"):
         assert client.get(path).status_code == 200
     assert client.get("/openapi.json").json()["info"]["title"] == "Tank Tactics"
 

@@ -25,7 +25,7 @@ python -m venv .venv && .venv/Scripts/python -m pip install -r requirements-dev.
 
 Server settings come from environment variables read by `ServerConfig` (pydantic-settings): `PORT`, `DB_PATH` (default `data/tank-tactics.db`), `HOST`, rate limits, etc. For quick manual play, run with `ALLOW_DEBUG=true` and create a game with `debug.fast_ticks` on so AP arrives every few seconds instead of on the schedule (every 24 h by default). `ALLOW_DEBUG` defaults to off, which hides the `debug.*` options and makes the API reject them; `make_service` turns it on for tests.
 
-The frontend (`public/`) is plain JS with no build step and is served by the API. Third-party scripts are vendored as release files in `public/vendor/` (currently rrule.js, used by the lobby's schedule editor to parse and write rules). There is no JS tooling in the repo; the client is tested through the browser tests below. In `app.js`, build DOM with `h()` / `fill()`; never pass possibly-`null` children to `replaceChildren()`, which renders them as the text "null".
+The frontend (`public/`) is plain JS with no build step and is served by the API. Third-party scripts are vendored as release files in `public/vendor/` (currently rrule.js, used by the lobby's schedule editor to parse and write rules). There is no JS tooling in the repo; the client is tested through the browser tests below. The client is native ES modules under `public/js/` (entry `js/main.js`, loaded with `type="module"` after the classic rrule.js script): `dom.js`, `api.js`, `storage.js` and `format.js` are shared helpers, `pages/` holds home and join, and `game/` the game page, whose state lives in `game/session.js` as the live-bound `G`. Modules import each other's render functions directly; the import cycles are fine because nothing runs at import time except `main.js`. Build DOM with `h()` / `fill()` from `dom.js`; never pass possibly-`null` children to `replaceChildren()`, which renders them as the text "null".
 
 ## Architecture
 
@@ -48,9 +48,9 @@ Layers, from the inside out. Each layer only depends on the ones above it:
 - **Schedule validation** has one source of truth: `recurrence.validate`. New rules must be on round minutes, at most once a minute (no `FREQ=SECONDLY`) and fire in every calendar month (35 days at most); see NOTES.md 28 and 35. `ALLOW_DEBUG` doesn't loosen the schedule: tests that need sub-minute ticks use `debug.fast_ticks`. Every scheduled event, including the time limit (rounded up), is on a whole minute except under fast ticks. `tests/support.py`'s `T0` is a round minute for that reason.
 - **Log entries** use `event_type: EventType` (a `StrEnum` in `game/state.py`); players use `action_range` (not `range`).
 
-### Wire format is coupled to `public/app.js`
+### Wire format is coupled to `public/js/`
 
-The client reads the JSON from `view_for` and the config shape directly: player keys (`action_range`, `ap` only when visible), log keys (`event_type`, `details.target_hp_after`, `game_start.details`), and the nested config paths used by the lobby form's `FIELDS` list (dotted keys such as `jury.enabled`; the schedule editor writes `ap.rrule` and `ap.timezone` and reads `game.schedule`). Renaming any of these requires updating `app.js`; `tests/backend/test_api.py::test_payload_field_names` pins the main ones. The WebSocket protocol: the client's first message is `{"type": "auth", "token": ...}`, then the server pushes `{"type": "state", "state": <view>}`.
+The client reads the JSON from `view_for` and the config shape directly: player keys (`action_range`, `ap` only when visible), log keys (`event_type`, `details.target_hp_after`, `game_start.details`), and the nested config paths used by the lobby form's `FIELDS` list (dotted keys such as `jury.enabled`; the schedule editor writes `ap.rrule` and `ap.timezone` and reads `game.schedule`). Renaming any of these requires updating the client (`FIELDS` is in `js/config-form.js`); `tests/backend/test_api.py::test_payload_field_names` pins the main ones. The WebSocket protocol: the client's first message is `{"type": "auth", "token": ...}`, then the server pushes `{"type": "state", "state": <view>}`.
 
 All API errors use `{"error": {"code", "message"}}` (`api/errors.py` also converts FastAPI validation errors to 400s in this format).
 
@@ -59,7 +59,7 @@ All API errors use `{"error": {"code", "message"}}` (`api/errors.py` also conver
 Two suites, each with its own `conftest.py` (fixtures). Plain helpers shared by both live in `tests/support.py`: `make_active(positions, **config_sections)` builds a started game with tanks at fixed tiles (e.g. `make_active({"a": (0, 0), "b": (1, 1)}, jury={"enabled": True})`), `make_service()` gives a `GameService` with an injectable `Clock`, plus `setup_game` and `place`.
 
 - `tests/backend/`: `test_game.py` (pure rules), `test_service.py` (persistence and restart catch-up on a real SQLite file via `tmp_path`, concurrency with threads and a barrier, chat privacy), `test_api.py` (the `api` fixture: FastAPI `TestClient`, needs `httpx2`; includes WebSocket pushes).
-- `tests/frontend/`: Playwright drives the real page in headless Edge (or bundled Chromium) against uvicorn in a thread. The conftest provides `server` (a `LiveServer` that can `stop()`/`start()` to simulate outages), `browser` and `page`, and marks every test here `ui`. This is the only coverage of `public/app.js`, so add a test here for client bugs. Skipped if no browser can be launched.
+- `tests/frontend/`: Playwright drives the real page in headless Edge (or bundled Chromium) against uvicorn in a thread. The conftest provides `server` (a `LiveServer` that can `stop()`/`start()` to simulate outages), `browser` and `page`, and marks every test here `ui`. This is the only coverage of `public/js/`, so add a test here for client bugs. Skipped if no browser can be launched.
 
 ## Code size
 
