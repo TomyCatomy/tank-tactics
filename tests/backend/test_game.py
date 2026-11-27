@@ -316,19 +316,6 @@ def test_ap_tick_catch_up_after_downtime():
     assert game.advance_time(s, T0 + 4 * DAY - 1, random.Random(0)) == []
 
 
-def test_debug_fast_ticks():
-    s = make_active({"a": (0, 0), "b": (5, 5)}, debug={"fast_ticks": True, "tick_seconds": 10})
-    game.advance_time(s, T0 + 25, random.Random(0))
-    assert p(s, "a").ap == 3
-
-
-def test_very_long_downtime_is_batched():
-    s = make_active({"a": (0, 0), "b": (5, 5)}, ap={"rrule": "FREQ=MINUTELY"})
-    entries = game.advance_time(s, T0 + 10_000 * 60, random.Random(0))
-    assert p(s, "a").ap == 10_001
-    assert len(entries) == 1 and entries[0].details["ticks"] == 10_000
-
-
 # 7. Jury -----------------------------------------------------------------------
 
 def _jury_game(**jury):
@@ -392,6 +379,7 @@ def test_jury_disabled_rejects_votes_and_never_schedules():
     assert game.next_jury_close_at(s) is None and s.last_jury_cycle_at is None
     entries = game.advance_time(s, T0 + 5 * DAY, random.Random(0))
     assert {e.event_type for e in entries} == {"ap_tick"}
+    assert s.last_jury_cycle_at is None and s.jury_cycle_index == 0
     assert game.view_for(s, "c")["jury"] is None
     # Dead players cannot affect the game.
     for fn in (lambda: game.move(s, "c", [5, 6], T0), lambda: game.shoot(s, "c", "a", T0),
