@@ -39,7 +39,11 @@ def main() -> None:
     tel = telemetry.setup(app)  # off unless OTEL_EXPORTER_OTLP_ENDPOINT is set
     log.info("telemetry export: %s", "on" if tel else "off")
     try:
-        uvicorn.run(app, host=cfg.host, port=cfg.port, log_level="info")
+        # Deployed, CloudFront reaches the server over HTTPS (deploy/aws/tls.sh gets the
+        # certificate), so tokens and chat are never sent in the clear on that hop either.
+        log.info("serving %s on port %d", "https" if cfg.ssl_certfile else "http", cfg.port)
+        uvicorn.run(app, host=cfg.host, port=cfg.port, log_level="info",
+                    ssl_certfile=cfg.ssl_certfile, ssl_keyfile=cfg.ssl_keyfile)
     finally:
         if tel:
             tel.shutdown()

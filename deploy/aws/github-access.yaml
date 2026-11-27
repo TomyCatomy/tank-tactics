@@ -65,6 +65,26 @@ Resources:
               - Effect: Allow
                 Action: s3:GetObject
                 Resource: !Sub ${DeployBucket.Arn}/app.tar.gz
+        # certbot's Route 53 plugin proves control of origin.<domain> to Let's Encrypt
+        # with a TXT record (deploy/aws/tls.sh). It may write only that record.
+        - PolicyName: origin-certificate
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - route53:GetChange
+                  - route53:ListHostedZones
+                Resource: "*"
+              - Effect: Allow
+                Action: route53:ChangeResourceRecordSets
+                Resource: !Sub arn:${AWS::Partition}:route53:::hostedzone/*
+                Condition:
+                  ForAllValues:StringEquals:
+                    route53:ChangeResourceRecordSetsNormalizedRecordNames: [!Sub "_acme-challenge.origin.${Domain}"]
+                    route53:ChangeResourceRecordSetsRecordTypes: [TXT]
+                  "Null":
+                    route53:ChangeResourceRecordSetsNormalizedRecordNames: "false"
 
   InstanceProfile:
     Type: AWS::IAM::InstanceProfile
@@ -226,7 +246,9 @@ Resources:
                     aws:ResourceTag/app: tank-tactics
               - Sid: OpenPortOnOwnedSecurityGroup
                 Effect: Allow
-                Action: ec2:AuthorizeSecurityGroupIngress
+                Action:
+                  - ec2:AuthorizeSecurityGroupIngress
+                  - ec2:RevokeSecurityGroupIngress # closes the port of the pre-HTTPS origin
                 Resource: !Sub arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:security-group/*
                 Condition:
                   StringEquals:
@@ -288,7 +310,8 @@ Resources:
                 Resource: !Sub arn:${AWS::Partition}:route53:::hostedzone/*
                 Condition:
                   ForAllValues:StringEquals:
-                    route53:ChangeResourceRecordSetsNormalizedRecordNames: [!Ref Domain, !Sub "www.${Domain}"]
+                    route53:ChangeResourceRecordSetsNormalizedRecordNames:
+                      [!Ref Domain, !Sub "www.${Domain}", !Sub "origin.${Domain}"]
                     route53:ChangeResourceRecordSetsRecordTypes: [A, AAAA]
                   "Null":
                     route53:ChangeResourceRecordSetsNormalizedRecordNames: "false"

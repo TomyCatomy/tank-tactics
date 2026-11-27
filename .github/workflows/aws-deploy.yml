@@ -43,6 +43,10 @@ env:
   SG_NAME: tank-tactics-web
   INSTANCE_PROFILE: tank-tactics-ec2
   DOMAIN: tanktactics.io # see deploy/aws/domain.sh
+  # CloudFront reaches the server over HTTPS at this name, with a certificate the server
+  # gets itself (deploy/aws/tls.sh). The port is the only one open, to CloudFront only.
+  ORIGIN_HOST: origin.tanktactics.io
+  ORIGIN_PORT: 8443
   ACTION: ${{ inputs.action || 'redeploy' }} # inputs are empty on push
   INSTANCE_TYPE: ${{ inputs.instance_type }}
   CONFIRM: ${{ inputs.confirm }}
@@ -124,13 +128,15 @@ jobs:
               --tag-specifications "ResourceType=security-group,Tags=[{Key=app,Value=$APP}]" \
               --query GroupId --output text)
             aws ec2 authorize-security-group-ingress --group-id "$sg" --ip-permissions \
-              "IpProtocol=tcp,FromPort=8080,ToPort=8080,PrefixListIds=[{PrefixListId=$prefix_list,Description=CloudFront origin-facing}]" \
+              "IpProtocol=tcp,FromPort=$ORIGIN_PORT,ToPort=$ORIGIN_PORT,PrefixListIds=[{PrefixListId=$prefix_list,Description=CloudFront origin-facing}]" \
               >/dev/null
           fi
 
           fetch_config=$(base64 -w0 deploy/aws/fetch-config.sh)
-          sed -e "s/__BUCKET__/$BUCKET/g" -e "s/__REGION__/$AWS_REGION/g" \
-              -e "s|__FETCH_CONFIG_B64__|$fetch_config|g" deploy/aws/userdata.sh > userdata.rendered.sh
+          tls=$(base64 -w0 deploy/aws/tls.sh)
+          sed -e "s/__BUCKET__/$BUCKET/g" -e "s/__REGION__/$AWS_REGION/g" -e "s/__ORIGIN_HOST__/$ORIGIN_HOST/g" \
+              -e "s|__FETCH_CONFIG_B64__|$fetch_config|g" -e "s|__TLS_B64__|$tls|g" \
+              deploy/aws/userdata.sh > userdata.rendered.sh
           instance=$(aws ec2 run-instances --image-id "$ami" --instance-type "$INSTANCE_TYPE" --subnet-id "$subnet" \
             --security-group-ids "$sg" --iam-instance-profile "Name=$INSTANCE_PROFILE" \
             --credit-specification CpuCredits=standard \
@@ -140,25 +146,23 @@ jobs:
             --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=$APP},{Key=app,Value=$APP}]" \
                                  "ResourceType=volume,Tags=[{Key=Name,Value=$APP-root},{Key=app,Value=$APP},{Key=backup,Value=daily}]" \
             --query 'Instances[0].InstanceId' --output text)
-          allocation=$(aws ec2 allocate-address --domain vpc \
+          read -r allocation ip < <(aws ec2 allocate-address --domain vpc \
             --tag-specifications "ResourceType=elastic-ip,Tags=[{Key=Name,Value=$APP},{Key=app,Value=$APP}]" \
-            --query AllocationId --output text)
+            --query '[AllocationId,PublicIp]' --output text)
           aws ec2 wait instance-running --instance-ids "$instance"
           aws ec2 associate-address --instance-id "$instance" --allocation-id "$allocation" >/dev/null
-          origin=$(aws ec2 describe-instances --instance-ids "$instance" \
-            --query 'Reservations[0].Instances[0].PublicDnsName' --output text)
-          echo "ORIGIN=$origin" >> "$GITHUB_ENV"
+          deploy/aws/domain.sh origin "$ip"
 
       - name: Create CloudFront distribution
         if: env.ACTION == 'up'
         run: |
           # Managed policies: CachingDisabled and AllViewerExceptHostHeader.
           jq -n --arg ref "$APP-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" --arg comment "$COMMENT" \
-                --arg origin "$ORIGIN" --arg id "$APP-ec2" '{
+                --arg origin "$ORIGIN_HOST" --argjson port "$ORIGIN_PORT" --arg id "$APP-ec2" '{
             CallerReference: $ref, Comment: $comment, Enabled: true,
             PriceClass: "PriceClass_100", HttpVersion: "http2and3", IsIPV6Enabled: true,
             Origins: {Quantity: 1, Items: [{Id: $id, DomainName: $origin, CustomOriginConfig: {
-              HTTPPort: 8080, HTTPSPort: 443, OriginProtocolPolicy: "http-only",
+              HTTPPort: 80, HTTPSPort: $port, OriginProtocolPolicy: "https-only",
               OriginSslProtocols: {Quantity: 1, Items: ["TLSv1.2"]},
               OriginReadTimeout: 60, OriginKeepaliveTimeout: 60}}]},
             DefaultCacheBehavior: {
@@ -172,7 +176,7 @@ jobs:
             --query 'Distribution.[Id,DomainName]' --output text)
           aws cloudfront wait distribution-deployed --id "$id"
           code=000
-          for _ in $(seq 1 40); do
+          for _ in $(seq 1 90); do # first boot installs Python, certbot and the app, and gets the certificate
             code=$(curl -s -o /dev/null -w '%{http_code}' "https://$domain/api/defaults" || true)
             [ "$code" = 200 ] && break
             sleep 10
@@ -187,6 +191,26 @@ jobs:
           echo "Site URL: https://$domain"
           echo "### Up: https://$domain" >> "$GITHUB_STEP_SUMMARY"
 
+      # Servers from before the origin used HTTPS get its port and DNS name here. Both are
+      # idempotent, and nothing listens on the port until the code below restarts the app.
+      - name: Open the HTTPS origin
+        if: env.ACTION == 'redeploy' && steps.target.outputs.skip != 'true'
+        run: |
+          sg=$(aws ec2 describe-security-groups --filters "Name=group-name,Values=$SG_NAME" "Name=tag:app,Values=$APP" \
+            --query 'SecurityGroups[0].GroupId' --output text)
+          prefix_list=$(aws ec2 describe-managed-prefix-lists \
+            --filters Name=prefix-list-name,Values=com.amazonaws.global.cloudfront.origin-facing \
+            --query 'PrefixLists[0].PrefixListId' --output text)
+          open=$(aws ec2 describe-security-groups --group-ids "$sg" --output json |
+            jq --argjson p "$ORIGIN_PORT" '[.SecurityGroups[0].IpPermissions[] | select(.FromPort == $p)] | length')
+          if [ "$open" = 0 ]; then
+            aws ec2 authorize-security-group-ingress --group-id "$sg" --ip-permissions \
+              "IpProtocol=tcp,FromPort=$ORIGIN_PORT,ToPort=$ORIGIN_PORT,PrefixListIds=[{PrefixListId=$prefix_list,Description=CloudFront origin-facing}]" \
+              >/dev/null
+          fi
+          ip=$(aws ec2 describe-addresses --filters "Name=tag:app,Values=$APP" --query 'Addresses[0].PublicIp' --output text)
+          deploy/aws/domain.sh origin "$ip"
+
       - name: Ship code to server
         if: env.ACTION == 'redeploy' && steps.target.outputs.skip != 'true'
         run: |
@@ -196,22 +220,32 @@ jobs:
           if [ "$instance" = None ]; then
             echo "::error::No running server. Run the workflow with action up."; exit 1
           fi
-          # Refresh the config script (servers created before it existed lack it), then pull
-          # settings from SSM Parameter Store. If that fails, the command stops before the
-          # restart and the old version keeps running. The last command fails the deploy
-          # unless the restarted server reports Google sign-in as on.
+          # Refresh the config and TLS scripts (servers created before them lack them), pull
+          # settings from SSM Parameter Store and get or keep the origin certificate. If any
+          # of that fails, the command stops before the restart and the old version keeps
+          # running. The last command fails the deploy unless the restarted server answers
+          # over HTTPS with a certificate valid for $ORIGIN_HOST and reports Google sign-in as on.
           install_config="echo $(base64 -w0 deploy/aws/fetch-config.sh) | base64 -d > /usr/local/bin/tank-tactics-config"
-          check_sign_in='for i in $(seq 1 20); do curl -fsS http://127.0.0.1:8080/api/auth/config | grep -q "\"google_client_id\":\"[^\"]" && exit 0; sleep 1; done; echo "Google sign-in is off after restart" >&2; exit 1'
-          params=$(jq -n --arg install "$install_config" --arg check "$check_sign_in" '{commands: [
-            "set -e", $install, "chmod 755 /usr/local/bin/tank-tactics-config", "/usr/local/bin/tank-tactics-config",
+          install_tls="echo $(base64 -w0 deploy/aws/tls.sh) | base64 -d > /usr/local/bin/tank-tactics-tls"
+          check_sign_in="for i in \$(seq 1 20); do curl -fsS --resolve $ORIGIN_HOST:$ORIGIN_PORT:127.0.0.1 https://$ORIGIN_HOST:$ORIGIN_PORT/api/auth/config | grep -q '\"google_client_id\":\"[^\"]' && exit 0; sleep 1; done; echo 'Google sign-in is off after restart, or HTTPS is not up' >&2; exit 1"
+          params=$(jq -n --arg config "$install_config" --arg tls "$install_tls" --arg host "$ORIGIN_HOST" \
+              --arg check "$check_sign_in" '{commands: [
+            "set -e", $config, $tls, "chmod 755 /usr/local/bin/tank-tactics-config /usr/local/bin/tank-tactics-tls",
+            "/usr/local/bin/tank-tactics-config", "/usr/local/bin/tank-tactics-tls issue \($host)",
             "/usr/local/bin/tank-tactics-deploy", "sleep 3", "systemctl is-active tank-tactics", $check]}')
           command=$(aws ssm send-command --instance-ids "$instance" --document-name AWS-RunShellScript \
             --parameters "$params" --query Command.CommandId --output text)
-          aws ssm wait command-executed --command-id "$command" --instance-id "$instance" || true
-          status=$(aws ssm get-command-invocation --command-id "$command" --instance-id "$instance" \
-            --query Status --output text)
+          # The first run installs certbot and gets a certificate, which takes longer than
+          # the SSM waiter's 100 seconds.
+          status=Pending
+          for _ in $(seq 1 120); do
+            sleep 5
+            status=$(aws ssm get-command-invocation --command-id "$command" --instance-id "$instance" \
+              --query Status --output text 2>/dev/null || echo Pending)
+            case "$status" in Pending|InProgress|Delayed) ;; *) break ;; esac
+          done
           aws ssm get-command-invocation --command-id "$command" --instance-id "$instance" \
-            --query StandardOutputContent --output text | grep -E '^(Google sign-in|Telemetry export|Discord connect):' || true
+            --query StandardOutputContent --output text | grep -E '^(Google sign-in|Telemetry export|Discord connect|Origin TLS):' || true
           aws ssm get-command-invocation --command-id "$command" --instance-id "$instance" \
             --query StandardErrorContent --output text | tail -n 20
           if [ "$status" != Success ]; then
@@ -230,6 +264,19 @@ jobs:
       - name: Attach domain
         if: env.ACTION == 'up' || (env.ACTION == 'redeploy' && steps.target.outputs.skip != 'true')
         run: deploy/aws/domain.sh attach
+
+      # Servers from before the origin used HTTPS also had plain HTTP open on 8080.
+      - name: Close the old HTTP port
+        if: env.ACTION == 'redeploy' && steps.target.outputs.skip != 'true'
+        run: |
+          sg=$(aws ec2 describe-security-groups --filters "Name=group-name,Values=$SG_NAME" "Name=tag:app,Values=$APP" \
+            --query 'SecurityGroups[0].GroupId' --output text)
+          old=$(aws ec2 describe-security-groups --group-ids "$sg" --output json |
+            jq -c '[.SecurityGroups[0].IpPermissions[] | select(.FromPort == 8080)]')
+          if [ "$old" != "[]" ]; then
+            aws ec2 revoke-security-group-ingress --group-id "$sg" --ip-permissions "$old" >/dev/null
+            echo "Closed port 8080"
+          fi
 
       - name: Delete deployment
         if: env.ACTION == 'down'
