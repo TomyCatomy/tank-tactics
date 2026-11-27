@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .board import distance, in_bounds, occupant_at
+from .board import adjacent, in_bounds, occupant_at
 from .events import fogged, gain_ap, log_event
 from .guards import (
     require_ap,
@@ -33,8 +33,8 @@ def move(state: GameState, actor_id: str, to: Any, now: float) -> list[LogEntry]
         raise GameError("out_of_bounds", "Invalid destination.") from None
     if not in_bounds(state, dest):
         raise GameError("out_of_bounds", "That tile is off the board.")
-    if distance(actor.pos, dest) != 1:
-        raise GameError("not_adjacent", "You can only move to an adjacent tile.")
+    if not adjacent(actor.pos, dest):
+        raise GameError("not_adjacent", "You can only move one tile up, down, left or right.")
     if occupant_at(state, dest):
         raise GameError("occupied", "That tile is occupied.")
     require_ap(actor, MOVE_COST)

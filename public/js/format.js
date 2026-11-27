@@ -26,8 +26,8 @@ export const dayOrdinal = (d) => `${d}${(d % 100 >= 11 && d % 100 <= 13) ? 'th' 
 
 export const initials = (name) => name.split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase() || '?';
 
-/** Step distance (movement): diagonal steps count the same as straight ones. */
-export const dist = (a, b) => Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
+/** Whether b is one move from a: up, down, left or right (no diagonals), like the server. */
+export const adjacent = (a, b) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y) === 1;
 
 /** Range distance: straight-line distance between tile centres. */
 export const rangeDist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
@@ -38,16 +38,11 @@ export const inRange = (a, b, r) => (a.x - b.x) ** 2 + (a.y - b.y) ** 2 <= r * r
 /** A range distance for display: whole numbers as is, others to one decimal. */
 export const fmtDist = (d) => (Number.isInteger(d) ? String(d) : d.toFixed(1));
 
-/** The tiles around (x, y) that are on an N×N board. */
+/** The tiles one move from (x, y) (up, down, left, right) that are on an N×N board. */
 export function neighbours({ x, y }, N) {
-  const out = [];
-  for (let dx = -1; dx <= 1; dx++) {
-    for (let dy = -1; dy <= 1; dy++) {
-      const nx = x + dx, ny = y + dy;
-      if ((dx || dy) && nx >= 0 && ny >= 0 && nx < N && ny < N) out.push({ x: nx, y: ny });
-    }
-  }
-  return out;
+  return [[1, 0], [-1, 0], [0, 1], [0, -1]]
+    .map(([dx, dy]) => ({ x: x + dx, y: y + dy }))
+    .filter((t) => t.x >= 0 && t.y >= 0 && t.x < N && t.y < N);
 }
 
 /** The last element of a list, or undefined. */

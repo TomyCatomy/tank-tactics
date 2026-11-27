@@ -101,15 +101,14 @@ class Bot:
 
     def _neighbors(self, s: game.GameState, me: game.Player) -> list[tuple[int, int]]:
         out = []
-        for dx in (-1, 0, 1):
-            for dy in (-1, 0, 1):
-                t = (me.x + dx, me.y + dy)
-                if (dx or dy) and game.in_bounds(s, t) and not game.occupant_at(s, t):
-                    out.append(t)
+        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            t = (me.x + dx, me.y + dy)
+            if game.in_bounds(s, t) and not game.occupant_at(s, t):
+                out.append(t)
         return out
 
     def _approach(self, s: game.GameState, me: game.Player, target: game.Player, now: float) -> bool:
-        options = [t for t in self._neighbors(s, me) if game.distance(t, target.pos) < game.distance(me.pos, target.pos)]
+        options = [t for t in self._neighbors(s, me) if game.range_distance(t, target.pos) < game.range_distance(me.pos, target.pos)]
         if not options:
             return False
         game.move(s, me.id, self.rng.choice(options), now)
