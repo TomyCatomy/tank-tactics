@@ -1,5 +1,5 @@
 // The game settings form (create form and lobby settings).
-import { fill, h } from './dom.js';
+import { fill, h, wholeNumberInput } from './dom.js';
 import { scheduleEditor } from './schedule/editor.js';
 
 // `k` is a dotted path into the nested server config (e.g. 'jury.enabled'). `main` fields show
@@ -47,12 +47,12 @@ function fieldInput(f, value, disabled) {
     const input = h('input', { type: 'checkbox', checked: !!value, disabled });
     return { input, el: h('label', { class: 'check' }, input, h('span', {}, f.label)) };
   }
+  const placeholder = f.nullable ? (f.hint || '') : '';
   const input = f.type === 'select'
     ? h('select', { disabled }, f.options.map(([val, lab]) => h('option', { value: val, selected: value === val }, lab)))
-    : h('input', {
-      type: f.type === 'int' ? 'number' : 'text', inputmode: f.type === 'int' ? 'numeric' : null,
-      value: value ?? '', disabled, placeholder: f.nullable ? (f.hint || '') : '',
-    });
+    : f.type === 'int'
+      ? wholeNumberInput({ value: value ?? '', disabled, placeholder })
+      : h('input', { type: 'text', value: value ?? '', disabled, placeholder });
   const hint = f.hint && !f.nullable ? h('div', { class: 'hint' }, f.hint) : null; // nullable fields show it as the placeholder
   return { input, el: h('label', { class: f.wide ? 'wide' : null }, h('span', {}, f.label), input, hint) };
 }

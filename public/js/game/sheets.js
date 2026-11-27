@@ -1,6 +1,6 @@
 // Action sheets: move, upgrade (your own tank) and shoot / give / DM (another tank).
 // The buttons are disabled with a reason when an action looks impossible; the server re-checks everything.
-import { dot, h } from '../dom.js';
+import { dot, h, wholeNumberInput } from '../dom.js';
 import { fmtDist, inRange, rangeDist } from '../format.js';
 import { closeSheet, openSheet } from '../notify.js';
 import { openDm } from './match.js';
@@ -45,7 +45,7 @@ function actRow(label, cost, why, onclick, extra = null) {
     why ? h('div', { class: 'why' }, why) : null);
 }
 
-const amountInput = (what) => h('input', { class: 'amount', type: 'number', min: 1, value: 1, inputmode: 'numeric', 'aria-label': `${what} amount` });
+const amountInput = (what) => wholeNumberInput({ class: 'amount', min: 1, value: 1, 'aria-label': `${what} amount` });
 
 export function openMoveSheet(x, y) {
   const my = me();
