@@ -921,3 +921,20 @@ def test_rules_modal_states_the_real_defaults(server, page):
     assert f"You start with {start.hp} HP, {start.ap} AP" in text and f"range {start.action_range}." in text
     assert f"Loot ({'on' if defaults.actions.loot_on_kill else 'off'} by default)" in text
     assert f"The jury ({'on' if defaults.jury.enabled else 'off'} by default)" in text
+
+
+def test_player_picks_tank_color_in_lobby(server, page):
+    host, bob = create_game(server)
+    open_as(page, server, host)
+    page.get_by_role("button", name="Change your tank’s colour").click()
+    taken = page.locator(".sheet .swatch[title^='Taken by'][title*='Bob']")
+    assert taken.is_disabled()  # Bob has the second palette colour
+    page.locator(".sheet .swatch[title='#4363d8']").click()
+    page.locator(".sheet").wait_for(state="detached")
+    with httpx.Client(base_url=server.url) as c:
+        st = c.get(f"/api/games/{host['game_id']}/state", headers={"Authorization": f"Bearer {host['token']}"}).json()
+    assert next(p for p in st["players"] if p["id"] == host["player_id"])["color"] == "#4363d8"
+    page.wait_for_function("() => getComputedStyle(document.querySelector('.lobby-players .plist .dot')).backgroundColor"
+                           " === 'rgb(67, 99, 216)'")
+    # Only your own row has the button.
+    assert page.get_by_role("button", name="Change your tank’s colour").count() == 1

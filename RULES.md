@@ -22,6 +22,10 @@ Be the **last tank standing**.
 You start with **3 HP**, **0 AP** (action points) and **range 3**. The host may have
 changed these numbers; the game page shows the real values.
 
+Before the game starts you can pick your tank's **colour** in the lobby: tap **Colour**
+beside your name. A colour too dark to see on the board, or too close to another
+player's, is refused.
+
 ## Action points
 
 - There are **no turns**. Every living tank gets **+1 AP every 24 hours**, all at the

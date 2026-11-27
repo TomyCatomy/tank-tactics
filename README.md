@@ -196,6 +196,7 @@ All state-changing requests use `Authorization: Bearer <player token>`.
 | `POST /api/games/{id}/start` | | host |
 | `POST /api/games/{id}/remove` | `{player_id}` | host; mid-game this destroys the tank |
 | `POST /api/games/{id}/leave` | | lobby only, not the host; your token stops working |
+| `POST /api/games/{id}/color` | `{color: "#rrggbb"}` | lobby only: your tank's colour (not too dark, not too close to another player's) |
 | `POST /api/games/{id}/close` | | host, lobby only; cancels the game for everyone (status `closed`) |
 | `POST /api/games/{id}/action` | `{type: move, to:[x,y]}` · `{type: shoot, target_id}` · `{type: give_ap\|give_hp, target_id, amount}` · `{type: upgrade}` | |
 | `POST /api/games/{id}/vote` | `{candidate_id}` | jurors, jury enabled only |
