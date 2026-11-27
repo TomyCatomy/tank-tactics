@@ -8,5 +8,5 @@ export const friendlyWarning = () =>
 
 /** The display-name field, prefilled with the signed-in `user`'s name. */
 export const nameInput = (user, attrs = {}) => h('input', {
-  maxlength: 24, placeholder: 'Your display name', autocomplete: 'nickname', value: user?.name?.slice(0, 24) || '', ...attrs,
+  maxlength: 24, placeholder: 'Your display name', autocomplete: 'nickname', dir: 'auto', value: user?.name?.slice(0, 24) || '', ...attrs,
 });

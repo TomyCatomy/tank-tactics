@@ -1,7 +1,7 @@
 // Action sheets: move, upgrade (your own tank) and shoot / give / DM (another tank).
 // The buttons are disabled with a reason when an action looks impossible; the server re-checks everything.
-import { dot, h, wholeNumberInput } from '../dom.js';
-import { fmtDist, inRange, rangeDist } from '../format.js';
+import { dot, h, nameEl, wholeNumberInput } from '../dom.js';
+import { fmtDist, inRange, isolate, rangeDist } from '../format.js';
 import { closeSheet, openSheet } from '../notify.js';
 import { openDm } from './match.js';
 import { G, byId, me, post, refresh } from './session.js';
@@ -61,7 +61,7 @@ export function openMoveSheet(x, y) {
 export function openSelfSheet() {
   openSheet(() => {
     const my = me(), cost = G.state.game.config.actions.range_upgrade_cost;
-    return [h('h2', {}, dot(my.color), `${my.name} (you)`),
+    return [h('h2', {}, dot(my.color), h('span', {}, nameEl(my.name), ' (you)')),
       h('p', { class: 'muted' }, `HP ${my.hp} · AP ${my.ap} · Range ${my.action_range}. Tap a highlighted tile next to you to move.`),
       actRow('Upgrade range', `${cost} AP → range ${my.action_range + 1}`, upgradeBlocker(), () => doAction({ type: 'upgrade' }))];
   });
@@ -78,10 +78,10 @@ function targetSheet(id) {
   const apIn = amountInput('AP'), hpIn = amountInput('HP');
   const rangeBlocker = blockers({ cost: 1, target: t, needRange: true });
   const removePlayer = async () => {
-    if (confirm(`Remove ${t.name}? Their tank will be destroyed.`) && await post('remove', { player_id: t.id })) { closeSheet(); refresh(); }
+    if (confirm(`Remove ${isolate(t.name)}? Their tank will be destroyed.`) && await post('remove', { player_id: t.id })) { closeSheet(); refresh(); }
   };
   return [
-    h('h2', {}, dot(t.color), t.name),
+    h('h2', {}, dot(t.color), nameEl(t.name)),
     h('p', { class: 'muted' }, `HP ${t.hp} · Range ${t.action_range}`, t.ap !== undefined ? ` · AP ${t.ap}` : '', d !== null ? ` · distance ${fmtDist(d)}` : '',
       my && d !== null && inRange(t, my, t.action_range) ? ' · you are in their range' : ''),
     actRow('Shoot', '1 AP · 1 damage', rangeBlocker, () => doAction({ type: 'shoot', target_id: t.id })),

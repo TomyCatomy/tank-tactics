@@ -2,7 +2,7 @@
 // The server is the source of truth: the client only renders what it sends and posts intents.
 import { api } from '../api.js';
 import { $, h, messageCard } from '../dom.js';
-import { fmtDur, last } from '../format.js';
+import { fmtDur, isolate, last } from '../format.js';
 import { notify, toast } from '../notify.js';
 import { route } from '../router.js';
 import { saved } from '../storage.js';
@@ -122,7 +122,7 @@ export async function postAndRefresh(path, body) {
 
 export const byId = (id) => G.state.players.find((p) => p.id === id);
 export const me = () => byId(G.state.viewer_id);
-export const nameOf = (id) => byId(id)?.name ?? 'someone';
+export const nameOf = (id) => { const p = byId(id); return p ? isolate(p.name) : 'someone'; };
 export const isMe = (p) => p.id === G.state.viewer_id;
 
 // ----- Incoming state

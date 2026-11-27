@@ -1,4 +1,5 @@
 // Log entries: their text in the log, the notifications they raise, and who they involve.
+import { isolate } from '../format.js';
 import { nameOf } from './session.js';
 
 const names = (ids, sep) => ids.map(nameOf).join(sep);
@@ -7,8 +8,8 @@ const names = (ids, sep) => ids.map(nameOf).join(sep);
 export function describe(e) {
   const a = nameOf(e.actor_id), t = nameOf(e.target_id), d = e.details || {};
   switch (e.event_type) {
-    case 'join': return `${d.name} joined.`;
-    case 'leave': return d.removed_by ? `${d.name} was removed by the host.` : `${d.name} left the lobby.`;
+    case 'join': return `${isolate(d.name)} joined.`;
+    case 'leave': return `${isolate(d.name)} ${d.removed_by ? 'was removed by the host' : 'left the lobby'}.`;
     case 'lobby_closed': return 'The host closed the lobby.';
     case 'config': return 'The host changed the settings.';
     case 'game_start': return `The game started on a ${d.board_size}×${d.board_size} board.`;

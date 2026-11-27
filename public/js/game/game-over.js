@@ -1,5 +1,5 @@
 // The game-over banner: winners, final table and a replay of the board.
-import { dot, h } from '../dom.js';
+import { dot, h, nameEl } from '../dom.js';
 import { fmtTime } from '../format.js';
 import { renderBoard } from './board.js';
 import { describe } from './events.js';
@@ -85,7 +85,7 @@ export function renderGameOver() {
     h('table', { class: 'final-table' },
       h('thead', {}, h('tr', {}, h('th', {}, 'Player'), h('th', {}, 'Result'), h('th', {}, 'HP'), h('th', {}, 'Range'))),
       h('tbody', {}, rows.map((p) => h('tr', {},
-        h('td', {}, dot(p.color), ' ', p.name),
+        h('td', {}, dot(p.color), ' ', nameEl(p.name)),
         h('td', {}, result(p)),
         h('td', {}, p.hp), h('td', {}, p.action_range))))),
     frames.length > 1 ? replayControls(frames) : null,

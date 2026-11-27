@@ -64,6 +64,9 @@ export function wholeNumberInput(attrs) {
   return input;
 }
 
+/** A player-chosen name, isolated (<bdi>) so a right-to-left name keeps its direction beside other text. */
+export const nameEl = (name) => h('bdi', {}, name);
+
 /** A colour dot for a player. */
 export const dot = (color) => h('span', { class: 'dot', style: { background: color } });
 

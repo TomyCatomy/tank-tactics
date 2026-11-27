@@ -1,6 +1,6 @@
 // The match screen's tabs (chat lives in chat.js).
-import { dot, h } from '../dom.js';
-import { countBy, fmtTime, inRange } from '../format.js';
+import { dot, h, nameEl } from '../dom.js';
+import { countBy, fmtTime, inRange, isolate } from '../format.js';
 import { freeNeighbours, selectPlayer } from './board.js';
 import { describe, involves } from './events.js';
 import { renderTab } from './match.js';
@@ -31,7 +31,7 @@ export function meTab() {
 
   return h('div', {},
     h('div', { class: 'row', style: { marginBottom: '10px' } },
-      h('h2', { style: { margin: 0 } }, dot(my.color), ' ', my.name),
+      h('h2', { style: { margin: 0 } }, dot(my.color), ' ', nameEl(my.name)),
       notificationsButton()),
     h('div', { class: 'stats' }, stat(my.hp, 'HP'), stat(my.ap, 'AP'), stat(my.action_range, 'Range')),
     active && my.alive
@@ -65,7 +65,7 @@ export function playersTab() {
     onclick: () => { if (p.alive) selectPlayer(p); },
   },
     dot(p.color),
-    h('span', { class: 'pname' }, p.name, p.id === my?.id ? ' (you)' : '',
+    h('span', { class: 'pname' }, nameEl(p.name), p.id === my?.id ? ' (you)' : '',
       p.is_host ? note(' · host') : null,
       p.is_juror ? note(' · juror') : null,
       !p.alive && !p.is_juror ? note(' · destroyed') : null),
@@ -79,7 +79,7 @@ const VISIBILITY_NOTE = { actor_only: 'only you can see this', participants: 'on
 export function logTab() {
   const st = G.state, sel = G.nodes.logFilter;
   sel.replaceChildren(h('option', { value: '' }, 'All players'),
-    ...st.players.map((p) => h('option', { value: p.id, selected: G.logFilter === p.id }, p.name)));
+    ...st.players.map((p) => h('option', { value: p.id, selected: G.logFilter === p.id }, isolate(p.name))));
   const entries = st.log.filter((e) => !G.logFilter || involves(e, G.logFilter)).reverse().slice(0, 500);
   const cls = (e) => (e.event_type === 'kill' || e.event_type === 'game_over' ? 'kill' : e.event_type === 'ap_tick' ? 'tick' : '');
   G.nodes.logList.replaceChildren(...entries.map((e) => h('li', { class: cls(e) },
@@ -107,7 +107,7 @@ export function juryTab() {
     !rules.votes_public ? h('p', { class: 'muted small' }, 'Votes are secret in this game: you only see your own.') : null,
     h('ul', { class: 'plist' }, st.players.filter((p) => p.alive).map((p) => h('li', {},
       dot(p.color),
-      h('span', { class: 'pname' }, p.name, p.id === my?.id ? ' (you)' : ''),
+      h('span', { class: 'pname' }, nameEl(p.name), p.id === my?.id ? ' (you)' : ''),
       h('span', { class: 'pstats' }, tally[p.id] ? `${tally[p.id]} vote(s)` : ''),
       isJuror ? voteButton(p) : null))),
     h('p', { class: 'muted small' }, isJuror ? 'You can change your vote until the cycle closes.' : my?.alive ? 'You can vote once your tank is destroyed.' : ''));
