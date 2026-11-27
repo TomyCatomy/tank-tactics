@@ -144,6 +144,9 @@ def test_local_seats_add_and_switch_players(server, page):
     page.locator(".plist li", has_text="Player 3").wait_for()
     switcher = page.locator(".seat-switch select")
     switcher.wait_for()
+    # Each join's state push can redraw the page before the client has saved that seat, so the
+    # switcher briefly lists one seat fewer than the player list; wait for the final redraw.
+    switcher.locator("option").nth(2).wait_for(state="attached")
     assert switcher.locator("option").count() == 3
 
     switcher.select_option(label="Player 2")
