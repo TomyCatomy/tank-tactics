@@ -1,37 +1,99 @@
-# Runs the full test suite on every push, for the pushed branch.
-# To block merging when it fails, add "tests" as a required status check in a branch
-# ruleset (Settings > Rules > Rulesets) targeting the branches you merge into.
-name: Tests
+# Merge gate: the test suite, the full playtest and the UI inspection, on every pull request
+# and on every push to staging and main. Each job is a separate status check (tests, playtest,
+# ui-inspection), and the "Merge gate" ruleset (Settings > Rules > Rulesets) requires all three on
+# staging and main, so a pull request can't be merged until they pass. Renaming a job or this
+# workflow means updating that ruleset too.
+name: CI
 
 on:
+  pull_request:
   push:
+    branches: [staging, main]
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: tests-${{ github.ref }}
-  cancel-in-progress: true # a newer push to the same branch supersedes the older run
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true # a newer push to the same pull request or branch supersedes the older run
 
+defaults:
+  run:
+    shell: bash
+
+# Windows, so the browser tests render with Edge and Segoe UI like local runs do: on Linux,
+# system-ui falls back to the much wider DejaVu Sans and the phone-layout tests overflow.
 jobs:
   tests:
     name: tests
-    # Windows, so the browser tests render with Edge and Segoe UI like local runs do: on
-    # Linux, system-ui falls back to the much wider DejaVu Sans and the phone-layout tests overflow.
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
-
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12" # matches the production server (deploy/aws/userdata.sh)
           cache: pip
           cache-dependency-path: requirements*.txt
-
       - name: Install dependencies
         run: python -m pip install -r requirements-dev.txt
-
       - name: Run tests # browser tests use the runner's preinstalled Edge
         run: python -m pytest -q -rs
+
+  playtest:
+    name: playtest
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements*.txt
+      - name: Install dependencies
+        run: python -m pip install -r requirements-dev.txt
+      - name: Full playtest # --strict: a skipped browser scenario fails the job instead of passing quietly
+        run: python .claude/skills/playtest/scripts/playtest.py --strict --out playtest.json
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playtest-report
+          path: playtest.json
+          if-no-files-found: ignore
+
+  ui-inspection:
+    name: ui-inspection
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # the baseline version is checked out from history as a git worktree
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements*.txt
+      - name: Install dependencies
+        run: |
+          python -m pip install -r requirements-dev.txt
+          python -m playwright install webkit
+      - name: Inspect every screen against the baseline
+        # Fails on findings that are new compared with the target branch (pull requests) or the
+        # previous commit (pushes); --strict makes a missing WebKit an error rather than a fallback.
+        env:
+          BASELINE: ${{ github.event.pull_request.base.sha || 'HEAD~1' }}
+        run: python .claude/skills/playtest/scripts/inspect_ui.py --strict --baseline "$BASELINE" --out ui-report
+      - name: Summarise
+        if: always()
+        run: if [ -f ui-report/report.md ]; then cat ui-report/report.md >> "$GITHUB_STEP_SUMMARY"; fi
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ui-report
+          path: ui-report
+          if-no-files-found: ignore
