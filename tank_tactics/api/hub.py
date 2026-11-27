@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, Coroutine
+from typing import Any, Callable, Coroutine
 
 from fastapi import WebSocket
 
@@ -21,6 +21,8 @@ class Hub:
         self.wake = asyncio.Event()  # set on every change so the scheduler recomputes its sleep
         self._loop: asyncio.AbstractEventLoop | None = None
         self._tasks: set[asyncio.Task[Any]] = set()
+        # Called on the event loop with (game id, new log entries) after every change.
+        self.listeners: list[Callable[[str, list[game.LogEntry]], None]] = []
 
     def attach(self, loop: asyncio.AbstractEventLoop) -> None:
         """Start receiving change notifications from the service."""
@@ -68,6 +70,8 @@ class Hub:
     def _changed(self, game_id: str, entries: list[game.LogEntry]) -> None:
         self.wake.set()  # e.g. a game just started: the next due tick moved earlier
         self.spawn(self.broadcast(game_id))
+        for listener in self.listeners:
+            listener(game_id, entries)
         state = self.service.get(game_id)
         url = state.config.notifications.discord_webhook_url if state else None
         if state is not None and url and entries:

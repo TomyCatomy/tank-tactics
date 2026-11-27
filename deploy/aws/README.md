@@ -66,6 +66,41 @@ The deployment fails if sign-in can't be turned on:
 - `up`: boot stops before the game starts, and the run fails its health check. It also
   fails if `/api/auth/config` through CloudFront has no client ID.
 
+## Telemetry: Grafana Cloud (optional)
+
+The server can export traces, metrics and logs over OTLP to Grafana Cloud's free tier
+(see [`tank_tactics/telemetry.py`](../../tank_tactics/telemetry.py) for what is sent; no
+tokens, names or chat text). It is off unless both parameters below exist.
+
+1. In Grafana Cloud, open your stack, then **Connections > Add new connection >
+   OpenTelemetry (OTLP)**. Create a token there, and copy the two values it shows:
+   `OTEL_EXPORTER_OTLP_ENDPOINT` (like `https://otlp-gateway-prod-<region>.grafana.net/otlp`)
+   and `OTEL_EXPORTER_OTLP_HEADERS` (like `Authorization=Basic%20<base64>`).
+2. Store them in SSM. The headers hold the token, so they go in a `SecureString`:
+
+   ```bash
+   aws ssm put-parameter --profile tank-tactics --region eu-north-1 --type String \
+     --name /tank-tactics/otel-endpoint --value '<OTEL_EXPORTER_OTLP_ENDPOINT>'
+   aws ssm put-parameter --profile tank-tactics --region eu-north-1 --type SecureString \
+     --name /tank-tactics/otel-headers --value '<OTEL_EXPORTER_OTLP_HEADERS>'
+   ```
+
+3. Run `redeploy` (or `up`). The run log says `Telemetry export: <endpoint>`; the token is
+   never printed.
+
+[`fetch-config.sh`](fetch-config.sh) writes them to `/etc/tank-tactics.env`, which is now
+readable by root only (systemd reads it before dropping to the service user). The instance
+role needs no change: `AmazonSSMManagedInstanceCore` can read parameters, and the default
+`aws/ssm` KMS key lets account principals decrypt through SSM. Setting only one of the two,
+or a non-https endpoint, fails the deploy before the restart. To turn telemetry off, delete
+both parameters and `redeploy`.
+
+In Grafana, the service is `tank-tactics` (environment `production`): traces in Tempo,
+logs in Loki, and metrics in Prometheus as `tank_tactics_games`, `tank_tactics_websockets`,
+`tank_tactics_game_events_total` and the `http_server_*` request metrics. At this game's
+traffic (about 1,000 players) it uses a small part of the free tier, and egress to
+Grafana stays within AWS's free 100 GB a month.
+
 ## Why this shape
 
 The server is a single stateful process: games live in memory, WebSockets stay open, a
