@@ -43,6 +43,9 @@ Where the spec left room for interpretation, this is what I chose and why.
     final: the game gets status `closed`, joins and starts are refused, and everyone's
     token keeps working so they can see that it was closed. Neither is possible once
     the game has started (mid-game, the host can still remove a player).
+10b. **Defaults that differ from the spec** (the owner's call). New games start every tank
+    with **0 AP**, looting is **off** and the jury is **on**. The host can change all three
+    in the lobby.
 
 ## Fog of war
 

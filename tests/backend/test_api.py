@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 from tank_tactics.api import create_app
 from tank_tactics.config import GameConfig
 
-from ..support import make_service, place
+from ..support import make_service, place, with_base_rules
 
 
 def auth(p: dict) -> dict:
@@ -17,7 +17,7 @@ def auth(p: dict) -> dict:
 
 
 def new_game(client: TestClient, names=("Ann", "Bob", "Cat"), config=None) -> list[dict]:
-    r = client.post("/api/games", json={"name": names[0], "config": config})
+    r = client.post("/api/games", json={"name": names[0], "config": with_base_rules(config)})
     assert r.status_code == 201, r.text
     host = r.json()
     others = [client.post(f"/api/games/{host['game_id']}/join", json={"name": n}).json() for n in names[1:]]

@@ -58,7 +58,7 @@ class StartConfig(_Section):
     """Every tank's stats when the game starts."""
 
     hp: int = Field(3, ge=1, le=100)
-    ap: int = Field(1, ge=0, le=1000)
+    ap: int = Field(0, ge=0, le=1000)
     action_range: int = Field(3, ge=1, le=200)
 
 
@@ -105,13 +105,13 @@ class ActionsConfig(_Section):
     range_upgrade_cost: int = Field(3, ge=1, le=1000, description="AP cost to permanently add 1 range.")
     max_range: int | None = Field(None, ge=1, le=200, description="Range upgrade ceiling. None = unlimited.")
     allow_give_hp: bool = True
-    loot_on_kill: bool = Field(True, description="The killer receives all of the victim's AP.")
+    loot_on_kill: bool = Field(False, description="The killer receives all of the victim's AP.")
 
 
 class JuryConfig(_Section):
     """The optional jury of dead players."""
 
-    enabled: bool = False  # cycles close on every AP occurrence (see ApConfig)
+    enabled: bool = True  # cycles close on every AP occurrence (see ApConfig)
     tie_rule: Literal["all", "random"] = Field("all", description="Ties: all tied get +1 AP, or one at random.")
     votes_public: bool = True
 
