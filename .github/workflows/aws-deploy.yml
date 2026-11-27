@@ -42,6 +42,7 @@ env:
   COMMENT: Tank Tactics
   SG_NAME: tank-tactics-web
   INSTANCE_PROFILE: tank-tactics-ec2
+  DOMAIN: tanktactics.io # see deploy/aws/domain.sh
   ACTION: ${{ inputs.action || 'redeploy' }} # inputs are empty on push
   INSTANCE_TYPE: ${{ inputs.instance_type }}
   CONFIRM: ${{ inputs.confirm }}
@@ -226,9 +227,14 @@ jobs:
             echo "### Site: https://$d" >> "$GITHUB_STEP_SUMMARY"
           done
 
+      - name: Attach domain
+        if: env.ACTION == 'up' || (env.ACTION == 'redeploy' && steps.target.outputs.skip != 'true')
+        run: deploy/aws/domain.sh attach
+
       - name: Delete deployment
         if: env.ACTION == 'down'
         run: |
+          deploy/aws/domain.sh detach
           ids=$(aws cloudfront list-distributions \
             --query "DistributionList.Items[?Comment=='$COMMENT'].Id" --output text)
           [ "$ids" = None ] && ids=""
