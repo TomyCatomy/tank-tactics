@@ -54,7 +54,7 @@ class Player:
     y: int = -1
     hp: int = 3
     ap: int = 1
-    action_range: int = 2  # how far this tank can shoot and give
+    action_range: int = 3  # how far this tank can shoot and give
     alive: bool = True
     is_host: bool = False
     died_at: float | None = None

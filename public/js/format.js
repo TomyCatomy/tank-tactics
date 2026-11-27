@@ -26,8 +26,17 @@ export const dayOrdinal = (d) => `${d}${(d % 100 >= 11 && d % 100 <= 13) ? 'th' 
 
 export const initials = (name) => name.split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase() || '?';
 
-/** Board distance: diagonal steps count the same as straight ones. */
+/** Step distance (movement): diagonal steps count the same as straight ones. */
 export const dist = (a, b) => Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
+
+/** Range distance: straight-line distance between tile centres. */
+export const rangeDist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+
+/** Whether b is within range r of a (exact, in integers, like the server). */
+export const inRange = (a, b, r) => (a.x - b.x) ** 2 + (a.y - b.y) ** 2 <= r * r;
+
+/** A range distance for display: whole numbers as is, others to one decimal. */
+export const fmtDist = (d) => (Number.isInteger(d) ? String(d) : d.toFixed(1));
 
 /** The tiles around (x, y) that are on an N×N board. */
 export function neighbours({ x, y }, N) {

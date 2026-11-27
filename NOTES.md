@@ -13,6 +13,7 @@ Where the spec left room for interpretation, this is what I chose and why.
 2. **Starting spacing.** "Not within distance 2 of another tank" means Chebyshev
    distance ≥ 3. The fallback "relax to distance 1" means ≥ 2, and the last fallback
    allows any free tile. Placement is randomised greedy with 50 attempts per level.
+   (Spacing and movement stay on step distance; only range is straight-line, see 36.)
 3. **`ap.cap` applies to every AP gain**, not just ticks: loot, gifts and jury awards
    too. Any excess is lost. A gift that runs into the cap still costs the giver the full
    amount; the entry records how much arrived, and only the two participants can see it.
@@ -159,6 +160,16 @@ Where the spec left room for interpretation, this is what I chose and why.
     ticks at 14:37:00 every day, the first one 23 seconds short of a day. The deadline is
     rounded up, never down, so a game is never shorter than its limit. The exceptions are
     debug fast ticks (31), whose timing is exact.
+
+## Range
+
+36. **Range is straight-line (Euclidean) distance** between tile centres, the owner's
+    call: a target is in range when `dx² + dy² <= range²`, checked in integers so there
+    is no rounding at the edge. Range 3 reaches (3, 0) and (2, 2) but not (3, 1) or
+    (2, 3). Only range changed: moving is still one step to any of the 8 neighbours, and
+    starting spacing (2) still uses step (Chebyshev) distance. Out-of-range errors show
+    the distance to one decimal. With the longer reach of a disc this size, the defaults
+    moved to range 3 and an auto board of at least 12×12.
 
 ## Not built (optional or out of scope for v1)
 

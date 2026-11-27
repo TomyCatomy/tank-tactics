@@ -857,3 +857,20 @@ def test_monthly_presets_never_skip_a_month(server, browser, date, day_preset, l
             assert raw_rule(page).startswith("FREQ=MONTHLY;BYMONTHDAY=-1;")
     finally:
         page.context.close()
+
+
+def test_range_shading_is_a_straight_line_disc(server, page):
+    """The shaded tiles around your tank are exactly the ones in range (dx² + dy² <= range²)."""
+    host, _ = create_game(server, config={"board": {"size": 12}, "start": {"action_range": 3}})
+    with httpx.Client(base_url=server.url, headers={"Authorization": f"Bearer {host['token']}"}) as c:
+        assert c.post(f"/api/games/{host['game_id']}/start").status_code == 200
+        me = next(p for p in c.get(f"/api/games/{host['game_id']}/state").json()["players"] if p["id"] == host["player_id"])
+    open_as(page, server, host)
+    page.wait_for_selector("svg.board .hl rect.range")
+    shaded = set()
+    for x, y, w, hgt in page.eval_on_selector_all(
+            "svg.board .hl rect.range",
+            "rs => rs.map(r => ['x', 'y', 'width', 'height'].map(a => +r.getAttribute(a)))"):
+        shaded |= {(x + i, y + j) for i in range(int(w)) for j in range(int(hgt))}
+    want = {(x, y) for x in range(12) for y in range(12) if (x - me["x"]) ** 2 + (y - me["y"]) ** 2 <= 9}
+    assert shaded == want

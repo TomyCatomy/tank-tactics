@@ -44,7 +44,7 @@ class _Section(BaseModel):
 
 class BoardConfig(_Section):
     size: int | None = Field(None, ge=3, le=200, description="Side length. None = auto from player count.")
-    min_size: int = Field(10, ge=3, le=200, description="Auto size: minimum side length.")
+    min_size: int = Field(12, ge=3, le=200, description="Auto size: minimum side length.")
     size_multiplier: int = Field(3, ge=1, le=20, description="Auto size: ceil(sqrt(players) * this).")
     wreckage_blocks_tile: bool = Field(False, description="Dead tanks leave an impassable wreck.")
 
@@ -59,7 +59,7 @@ class StartConfig(_Section):
 
     hp: int = Field(3, ge=1, le=100)
     ap: int = Field(1, ge=0, le=1000)
-    action_range: int = Field(2, ge=1, le=200)
+    action_range: int = Field(3, ge=1, le=200)
 
 
 class ApConfig(_Section):

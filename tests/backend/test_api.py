@@ -162,7 +162,7 @@ def test_payload_field_names(api):
         assert "event_type" in entry and "type" not in entry
     start = next(e for e in state["log"] if e["event_type"] == "game_start")
     assert set(start["details"]) == {"board_size", "positions", "hp", "action_range"}
-    assert state["game"]["config"]["start"]["action_range"] == 2
+    assert state["game"]["config"]["start"]["action_range"] == 3
     # The lobby's schedule editor reads and writes these.
     assert set(state["game"]["config"]["ap"]) == {"rrule", "timezone", "cap"}
     sched = state["game"]["schedule"]

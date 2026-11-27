@@ -1,6 +1,6 @@
 // The match screen's tabs (chat lives in chat.js).
 import { dot, h } from '../dom.js';
-import { countBy, dist, fmtTime } from '../format.js';
+import { countBy, fmtTime, inRange } from '../format.js';
 import { freeNeighbours, selectPlayer } from './board.js';
 import { describe, involves } from './events.js';
 import { renderTab } from './match.js';
@@ -19,7 +19,7 @@ function notificationsButton() {
 export function meTab() {
   const st = G.state, my = me(), c = st.game.config, active = st.game.status === 'active';
   if (!my) return h('p', {}, 'Spectating.');
-  const inRange = st.players.filter((p) => p.alive && p.id !== my.id && dist(my, p) <= my.action_range).length;
+  const inRange = st.players.filter((p) => p.alive && p.id !== my.id && inRange(my, p, my.action_range)).length;
   const canMove = freeNeighbours(my, st.players, st.game.board_size, c).length > 0;
   const upgradeCost = c.actions.range_upgrade_cost, maxRange = c.actions.max_range;
   const capped = maxRange !== null && my.action_range >= maxRange;

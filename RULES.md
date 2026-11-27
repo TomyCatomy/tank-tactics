@@ -10,14 +10,16 @@ Be the **last tank standing**.
 
 - Everyone has one tank on a square grid. Only one tank fits on a tile.
 - Everyone can always see every tank's **position, HP (health) and range**.
-- Distance counts diagonal steps the same as straight ones. A tank one step diagonally
-  away is at distance 1, and a tank 2 across and 2 down is at distance 2.
+- **Range** is measured in a straight line from tile centre to tile centre. A tank 3
+  across is at distance 3, but a tank 2 across and 2 down is at distance 2.8, so range 2
+  doesn't reach it. When you select a tank, the board shades the tiles it can reach.
+- **Moving** is one step to any of the 8 surrounding tiles, diagonals included.
 - There are no walls and no line of sight. You can shoot "through" other tanks.
   **Range is the only limit.**
 
 ## Your tank
 
-You start with **3 HP**, **1 AP** (action point) and **range 2**. The host may have
+You start with **3 HP**, **1 AP** (action point) and **range 3**. The host may have
 changed these numbers; the game page shows the real values.
 
 ## Action points
