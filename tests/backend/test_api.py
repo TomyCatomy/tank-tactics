@@ -269,13 +269,10 @@ def test_existing_debug_game_survives_turning_the_flag_off(tmp_path):
 # -- schedule preview ------------------------------------------------------------------------
 
 def test_schedule_preview(api):
-    client, _, clock = api
-    clock.t = 1_774_432_800.0  # 2026-03-25 12:00 in Jerusalem, two days before DST starts
+    client, _, _ = api
     r = client.post("/api/schedule/preview", json={"rrule": "freq=daily;byhour=9;byminute=0", "timezone": "Asia/Jerusalem"})
     assert r.status_code == 200, r.text
-    body = r.json()
-    assert body["rrule"] == "FREQ=DAILY;BYHOUR=9;BYMINUTE=0"
-    assert body == {"rrule": "FREQ=DAILY;BYHOUR=9;BYMINUTE=0", "timezone": "Asia/Jerusalem",
+    assert r.json() == {"rrule": "FREQ=DAILY;BYHOUR=9;BYMINUTE=0", "timezone": "Asia/Jerusalem",
                     "summary": "Every day at 09:00 (Asia/Jerusalem)"}
 
     for rule, tz, needle in [("FREQ=DAILY;COUNT=2", "UTC", "rrule: COUNT is not allowed"),
@@ -289,13 +286,11 @@ def test_schedule_preview(api):
 
 
 @pytest.mark.parametrize("which", ["debug", "locked"])
-def test_schedule_preview_refuses_seconds_and_skipped_months(api, locked_api, which):
+def test_schedule_preview_refuses_seconds_on_any_server(api, locked_api, which):
+    # The preview runs the same recurrence.validate as the lobby, whose messages
+    # test_recurrence.py pins; here: a debug server doesn't loosen it.
     client = (api if which == "debug" else locked_api)[0]
-    for rule, needle in [("FREQ=SECONDLY;INTERVAL=10", "FREQ=SECONDLY is not allowed"),
-                         ("FREQ=HOURLY;BYSECOND=30", "BYSECOND can only be 0"),
-                         ("FREQ=MONTHLY;BYMONTHDAY=31", "Use BYMONTHDAY=-1"),
-                         ("FREQ=YEARLY", "less than once a month")]:
-        r = client.post("/api/schedule/preview", json={"rrule": rule, "timezone": "UTC"})
-        assert r.status_code == 400 and needle in r.json()["error"]["message"], r.text
+    r = client.post("/api/schedule/preview", json={"rrule": "FREQ=SECONDLY;INTERVAL=10", "timezone": "UTC"})
+    assert r.status_code == 400 and "FREQ=SECONDLY is not allowed" in r.json()["error"]["message"], r.text
     r = client.post("/api/schedule/preview", json={"rrule": "FREQ=MONTHLY;BYDAY=TH;BYSETPOS=-1", "timezone": "UTC"})
     assert r.status_code == 200

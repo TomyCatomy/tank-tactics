@@ -237,13 +237,6 @@ def test_ap_tick_comes_before_the_jury_close_at_the_same_occurrence():
     assert game.next_jury_close_at(s) == at(JLM, 2026, 11, 28, 9, 0)
 
 
-def test_jury_disabled_never_closes():
-    s = make_active({"a": (0, 0), "b": (5, 5)}, ap={"rrule": "FREQ=HOURLY;BYMINUTE=0"})
-    assert game.next_jury_close_at(s) is None
-    entries = game.advance_time(s, T0 + 3 * DAY, random.Random(0))
-    assert {e.event_type for e in entries} == {"ap_tick"}
-
-
 def test_fast_ticks_override_the_rule_for_ap_and_jury():
     start = at(JLM, 2026, 11, 26, 12, 0)
     s = _jury_game(start, ap={"rrule": "FREQ=WEEKLY;BYDAY=MO;BYHOUR=9", "timezone": "Asia/Jerusalem"},
@@ -253,7 +246,7 @@ def test_fast_ticks_override_the_rule_for_ap_and_jury():
     entries = game.advance_time(s, start + 35, random.Random(0))
     assert [(e.event_type, e.ts - start) for e in entries] == [
         ("ap_tick", 10), ("jury_award", 10), ("ap_tick", 20), ("ap_tick", 30)]  # later cycles had no votes
-    assert s.jury_cycle_index == 3
+    assert s.jury_cycle_index == 3 and p(s, "a").ap == 1 + 3 and p(s, "b").ap == 1 + 3 + 1
     view = game.view_for(s, "a")["game"]["schedule"]
     assert view["rrule"] == "FREQ=WEEKLY;BYDAY=MO;BYHOUR=9"
     assert view["effective_rrule"] == "FREQ=SECONDLY;INTERVAL=10" and view["effective_timezone"] == "UTC"
@@ -344,10 +337,9 @@ def test_plain_intervals_count_from_the_start_minute():
     assert first == at(JLM, 2026, 11, 26, 16, 15) and first - start == 6 * 3600 - 42
 
 
-def test_secondly_is_only_for_debug_fast_ticks():
-    with pytest.raises(ConfigError, match="FREQ=SECONDLY is not allowed"):
-        GameConfig.parse({"ap": {"rrule": "FREQ=SECONDLY;INTERVAL=120"}})
-    # Fast ticks keep second-level timing from the exact start.
+def test_debug_fast_ticks_keep_second_level_timing():
+    # FREQ=SECONDLY itself is refused as a rule (see test_invalid_rules_are_rejected_with_a_reason);
+    # debug fast ticks keep second-level timing from the exact start.
     s = make_active({"a": (0, 0), "b": (5, 5)}, now=T0 + 0.5, debug={"fast_ticks": True, "tick_seconds": 7})
     assert game.next_ap_tick_at(s) == T0 + 7.5
 

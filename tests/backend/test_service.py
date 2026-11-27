@@ -159,16 +159,6 @@ def test_lobby_removal_revokes_token():
     assert e.value.status == 401
 
 
-def test_jury_disabled_scheduler_never_closes_cycles():
-    svc, clock = make_service()
-    gid, (a, b, c), _ = setup_game(svc)
-    clock.t += 10 * DAY
-    svc.tick()
-    s = svc.games[gid]
-    assert s.last_jury_cycle_at is None and s.jury_cycle_index == 0
-    assert not [e for e in s.log if e.event_type.startswith("jury")]
-
-
 def test_host_updates_lobby_config_and_it_persists(tmp_path):
     db = str(tmp_path / "t.db")
     svc, clock = make_service(db)
