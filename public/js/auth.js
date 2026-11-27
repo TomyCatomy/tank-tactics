@@ -4,9 +4,10 @@ import { fill, h } from './dom.js';
 import { toast } from './notify.js';
 import { route } from './router.js';
 import { account, saved } from './storage.js';
+import { GOOGLE_GSI_CLIENT, scriptURL } from './trusted.js';
 
 const loadGoogleScript = once(() => new Promise((resolve, reject) => {
-  const s = h('script', { src: 'https://accounts.google.com/gsi/client', async: true });
+  const s = h('script', { src: scriptURL(GOOGLE_GSI_CLIENT), async: true });
   s.onload = () => resolve(window.google);
   s.onerror = () => reject(new Error('Could not load Google sign-in.'));
   document.head.append(s);

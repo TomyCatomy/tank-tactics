@@ -446,6 +446,12 @@ def discord_connect_round_trip(t: T):
     t.eq(back(error="access_denied", state=q["state"]), f"/?discord=cancelled#/g/{h.game_id}", "cancelled on Discord")
     t.eq(back(code="x", state=q["state"]), "/?discord=expired#/", "a used state is refused")
     t.eq(back(code="x", state="made-up"), "/?discord=expired#/", "an unknown state is refused")
+    # The link only works in the browser that started it (the connect request set a cookie).
+    q2 = dict(urllib.parse.parse_qsl(urllib.parse.urlparse(t.good(t.post(h, "discord/connect", origin),
+                                                                   "host starts again").json()["url"]).query))
+    with httpx.Client(base_url=t.srv.url, trust_env=False) as other:
+        r = other.get("/api/discord/callback", params={"code": "x", "state": q2["state"]}, follow_redirects=False)
+    t.eq(r.headers.get("location"), "/?discord=expired#/", "a link opened in another browser is refused")
     t.eq(t.view(h)["game"]["config"]["notifications"]["discord_webhook_url"], None, "nothing was saved")
     t.good(t.post(h, "start"), "start")
     t.err(t.post(h, "discord/connect", origin), 400, "not_lobby", "connecting after the start")
@@ -987,6 +993,22 @@ def auth_boundaries(t: T):
     t.err(t.req("GET", "/api/games/nosuch/state", a), 401, "unauthorized", "state of unknown game")
     v = t.view(a)
     t.ok("token" not in json.dumps(v["players"]), "views never contain tokens")
+
+
+@scenario("protocol")
+def security_headers_on_every_response(t: T):
+    a, _ = t.game(2)
+    for path, seat in (("/", None), ("/static/js/main.js", None), ("/api/defaults", None),
+                       (f"/api/games/{a.game_id}/state", a), ("/api/nope", None)):
+        r = t.req("GET", path, seat)
+        csp = r.headers.get("content-security-policy", "")
+        for directive in ("default-src 'self'", "object-src 'none'", "frame-ancestors 'none'",
+                          "require-trusted-types-for 'script'"):
+            t.ok(directive in csp, f"{path}: CSP has {directive}")
+        script_src = next((d for d in csp.split("; ") if d.startswith("script-src")), "")
+        t.ok(script_src and "unsafe" not in script_src, f"{path}: CSP allows no inline script or eval")
+        t.eq(r.headers.get("x-content-type-options"), "nosniff", f"{path}: nosniff")
+        t.ok(r.headers.get("strict-transport-security", "").startswith("max-age="), f"{path}: HSTS")
 
 
 @scenario("protocol")

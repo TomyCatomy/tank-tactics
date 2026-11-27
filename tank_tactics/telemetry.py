@@ -7,7 +7,8 @@ the auth header, ``OTEL_SERVICE_NAME`` (default ``tank-tactics``), ``OTEL_RESOUR
 
 Sent: a span per HTTP request and WebSocket connection (none for static files or WebSocket
 messages), request metrics by route, the ``tank_tactics.*`` metrics below and INFO+ log records.
-Headers and bodies (tokens, chat text, names) are never recorded.
+Headers and bodies (tokens, chat text, names) are never recorded, and ``redaction.py`` masks
+secrets in what is (URL query strings, exception messages and tracebacks, log messages).
 """
 from __future__ import annotations
 
@@ -30,7 +31,7 @@ from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor, SimpleSpanProcessor, SpanExporter
 
-from . import game
+from . import game, redaction
 
 ENDPOINT_VAR = "OTEL_EXPORTER_OTLP_ENDPOINT"
 DEFAULT_SERVICE_NAME = "tank-tactics"
@@ -64,23 +65,20 @@ def setup(
     log_exporter: LogRecordExporter | None = None,
     install_globals: bool = True,
 ) -> Telemetry | None:
-    """Instrument ``app`` (built by ``create_app``) and start exporting; ``None`` when off.
-
-    Call it before the app serves anything. Tests pass in-memory exporters (which are then
-    exported synchronously) and ``install_globals=False``; normally the OTLP exporters are used
-    and the providers become the process-wide defaults.
-    """
+    """Instrument ``app`` (built by ``create_app``) before it serves anything; ``None`` when off.
+    Tests pass in-memory exporters (exported synchronously) and ``install_globals=False``."""
     if not enabled(env) and span_exporter is None:
         return None
     resource = _resource()
+    redaction.register_env_secrets(env)
 
     tracer_provider = TracerProvider(resource=resource)
     if span_exporter is None:
         from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 
-        tracer_provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter()))
+        tracer_provider.add_span_processor(BatchSpanProcessor(redaction.RedactingSpanExporter(OTLPSpanExporter())))
     else:
-        tracer_provider.add_span_processor(SimpleSpanProcessor(span_exporter))
+        tracer_provider.add_span_processor(SimpleSpanProcessor(redaction.RedactingSpanExporter(span_exporter)))
 
     if metric_reader is None:
         from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
@@ -89,6 +87,7 @@ def setup(
     meter_provider = MeterProvider(resource=resource, metric_readers=[metric_reader])
 
     logger_provider = LoggerProvider(resource=resource)
+    logger_provider.add_log_record_processor(redaction.RedactingLogProcessor())  # before exporting
     if log_exporter is None:
         from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
 

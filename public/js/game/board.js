@@ -1,6 +1,6 @@
 // The SVG board. Tap a tank to open its action sheet, or a free tile next to yours to move.
 import { h, sv } from '../dom.js';
-import { adjacent, initials, neighbours } from '../format.js';
+import { adjacent, initials, isolate, neighbours } from '../format.js';
 import { G, byId, me } from './session.js';
 import { openMoveSheet, openSelfSheet, openTargetSheet } from './sheets.js';
 
@@ -48,7 +48,7 @@ function tankShape(p, { maxHp, isMine, isSelected }) {
     class: i < p.hp ? 'hp-pip' : 'hp-pip empty', x: cx - (shown * w) / 2 + i * w + 0.01, y: p.y + 0.72, width: w - 0.02, height: 0.1, rx: 0.02,
   }));
   return sv('g', { class: 'tank' },
-    sv('title', {}, `${p.name}: ${p.hp} HP, range ${p.action_range}${p.ap !== undefined ? `, ${p.ap} AP` : ''}`),
+    sv('title', {}, `${isolate(p.name)}: ${p.hp} HP, range ${p.action_range}${p.ap !== undefined ? `, ${p.ap} AP` : ''}`),
     sv('rect', { x: p.x + 0.14, y: p.y + 0.16, width: 0.72, height: 0.5, rx: 0.12, fill: p.color }),
     sv('text', { class: 'tank-label', x: cx, y: p.y + 0.52, 'text-anchor': 'middle' }, initials(p.name)),
     pipRects,

@@ -91,3 +91,48 @@ def test_log_records_are_exported(instrumented):
     *_, logs = instrumented
     logging.getLogger("tank_tactics").warning("scheduler tick failed")
     assert any(r.log_record.body == "scheduler tick failed" for r in logs.get_finished_logs())
+
+
+FAKE = {
+    "oauth": "OAUTHCODE123", "state": "STATESTRING456", "webhook": "WEBHOOKTOKEN789",
+    "db": "DBPASSWORD000", "bearer": "BEARERTOKEN111", "client_secret": "CLIENTSECRET222",
+    "jwt": "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiIxMjMifQ.c2lnbmF0dXJl",
+}
+
+
+def test_secrets_never_reach_the_exporters():
+    """Plants fake secrets everywhere telemetry could pick them up and checks every
+    exported span and log record."""
+    svc, _ = make_service()
+    app = create_app(svc)
+
+    @app.get("/api/test-boom")
+    def boom():
+        raise RuntimeError(f"connect to postgresql://app:{FAKE['db']}@db.example/tt failed")
+
+    spans, logs = InMemorySpanExporter(), InMemoryLogRecordExporter()
+    tel = telemetry.setup(app, env={"DISCORD_CLIENT_SECRET": FAKE["client_secret"]}, span_exporter=spans,
+                          metric_reader=InMemoryMetricReader(), log_exporter=logs, install_globals=False)
+    with TestClient(app, raise_server_exceptions=False) as client:
+        client.get("/api/discord/callback", params={"code": FAKE["oauth"], "state": FAKE["state"]},
+                   follow_redirects=False)
+        assert client.get("/api/test-boom").status_code == 500
+    log = logging.getLogger("tank_tactics")
+    log.warning("discord post to https://discord.com/api/webhooks/42/%s failed", FAKE["webhook"])
+    log.warning("auth header was Bearer %s with id token %s", FAKE["bearer"], FAKE["jwt"])
+    log.warning("token exchange refused: client_secret=%s", FAKE["client_secret"])
+    try:
+        raise ValueError(f"bad secret {FAKE['client_secret']} for https://discord.com/api/webhooks/1/{FAKE['webhook']}")
+    except ValueError:
+        log.exception("startup check failed")
+    tel.shutdown()
+
+    finished = spans.get_finished_spans()
+    assert any(e.name == "exception" for s in finished for e in s.events), "the 500 left no exception event"
+    exported = [s.to_json() for s in finished]
+    exported += [json.dumps({"body": str(r.log_record.body), "attributes": dict(r.log_record.attributes or {})})
+                 for r in logs.get_finished_logs()]
+    dumped = "\n".join(exported)
+    assert "[REDACTED]" in dumped and "startup check failed" in dumped
+    for name, secret in FAKE.items():
+        assert secret not in dumped, f"the fake {name} reached the exporter"

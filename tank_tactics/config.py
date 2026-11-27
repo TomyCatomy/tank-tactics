@@ -292,3 +292,13 @@ class ServerConfig(BaseSettings):
     discord_client_secret: SecretStr | None = Field(None, description="The Discord app's OAuth2 client secret.")
     session_ttl_days: int = Field(30, ge=1, le=365, description="How long a sign-in lasts before it must be renewed.")
     login_rate_per_minute: int = Field(10, ge=1, description="Max sign-in attempts per client IP per minute.")
+    ssl_certfile: str | None = Field(
+        None, description="TLS certificate chain (PEM). With ``ssl_keyfile``, the server speaks HTTPS only."
+    )
+    ssl_keyfile: str | None = Field(None, description="The private key for ``ssl_certfile`` (PEM).")
+
+    @model_validator(mode="after")
+    def _tls_pair(self) -> Self:
+        if bool(self.ssl_certfile) != bool(self.ssl_keyfile):
+            raise ValueError("set both SSL_CERTFILE and SSL_KEYFILE, or neither")
+        return self

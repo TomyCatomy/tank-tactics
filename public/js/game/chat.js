@@ -1,6 +1,6 @@
 // Chat: the public channel and DMs between living players, with unread counts.
-import { h } from '../dom.js';
-import { fmtTime, last, sum } from '../format.js';
+import { h, nameEl } from '../dom.js';
+import { fmtTime, isolate, last, sum } from '../format.js';
 import { notify } from '../notify.js';
 import { renderLobbyTabs } from './lobby.js';
 import { renderTabs } from './match.js';
@@ -37,7 +37,7 @@ export function trackUnread(st) {
 export function chatPanel() {
   const channel = h('select', { 'aria-label': 'Channel', onchange: (e) => { G.chat = e.target.value; renderChat(); } });
   const list = h('ul', { class: 'chat-msgs' });
-  const input = h('textarea', { rows: 2, maxlength: 1000, placeholder: 'Message…' });
+  const input = h('textarea', { rows: 2, maxlength: 1000, placeholder: 'Message…', dir: 'auto' });
   const send = async () => {
     const text = input.value.trim();
     if (text && await postAndRefresh('chat', { to_id: G.chat === 'public' ? null : G.chat, text })) input.value = '';
@@ -60,15 +60,15 @@ export function renderChat() {
   const others = my?.alive ? st.players.filter((p) => p.id !== my.id && p.alive) : [];
   if (G.chat !== 'public' && !others.some((p) => p.id === G.chat)) G.chat = 'public';
   const option = (id, name) => h('option', { value: id, selected: G.chat === id }, `${name}${G.unread[id] ? ` (${G.unread[id]} new)` : ''}`);
-  channel.replaceChildren(option('public', 'Public channel'), ...others.map((p) => option(p.id, `DM: ${p.name}`)));
+  channel.replaceChildren(option('public', 'Public channel'), ...others.map((p) => option(p.id, `DM: ${isolate(p.name)}`)));
   if (chatOnScreen() && !document.hidden) delete G.unread[G.chat];
 
   const msgs = st.messages.filter((m) => channelOf(m, st.viewer_id) === G.chat);
   const atBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 40;
   list.replaceChildren(...(msgs.length
     ? msgs.map((m) => h('li', { class: m.from_id === st.viewer_id ? 'mine' : '' },
-      h('div', { class: 'who', style: { color: byId(m.from_id)?.color } }, nameOf(m.from_id), h('span', { class: 'when' }, fmtTime(m.ts))),
-      h('div', {}, m.text)))
+      h('div', { class: 'who', style: { color: byId(m.from_id)?.color } }, byId(m.from_id) ? nameEl(byId(m.from_id).name) : 'someone', h('span', { class: 'when' }, fmtTime(m.ts))),
+      h('div', { class: 'text', dir: 'auto' }, m.text)))
     : [h('li', { class: 'muted' }, G.chat === 'public' ? 'No messages yet. Say hi (or make threats).' : 'Private messages are only visible to the two of you.')]));
   if (atBottom || !list.dataset.init) { list.scrollTop = list.scrollHeight; list.dataset.init = '1'; }
   input.placeholder = G.chat === 'public' ? 'Message everyone…' : `Message ${nameOf(G.chat)} privately…`;

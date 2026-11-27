@@ -29,6 +29,26 @@ export const sv = (tag, attrs, ...kids) => build(document.createElementNS(SVGNS,
 /** Like el.replaceChildren(), but skips null/false (replaceChildren would render them as text). */
 export const fill = (el, ...kids) => { el.replaceChildren(); return build(el, {}, kids); };
 
+const CONTROLS = new Set(['BUTTON', 'INPUT', 'SELECT', 'TEXTAREA']);
+/** A control's identity: its label, or failing that its text. Controls only morph into the same control. */
+const sameControl = (a, b) => !CONTROLS.has(a.nodeName)
+  || (a.getAttribute('aria-label') || a.textContent) === (b.getAttribute('aria-label') || b.textContent);
+
+/**
+ * Make `el` look like `next` (a freshly built copy of it), changing as little of the DOM as
+ * possible: matching elements keep their identity, focus, typed value and listeners, so `next`
+ * must come from the same builder. A control whose label changed is replaced, listeners and all.
+ */
+export function morph(el, next) {
+  if (el.nodeName !== next.nodeName || (el.nodeType === Node.ELEMENT_NODE && !sameControl(el, next))) { el.replaceWith(next); return; }
+  if (el.nodeType !== Node.ELEMENT_NODE) { if (el.nodeValue !== next.nodeValue) el.nodeValue = next.nodeValue; return; }
+  for (const { name } of [...el.attributes]) if (!next.hasAttribute(name)) el.removeAttribute(name);
+  for (const { name, value } of next.attributes) if (el.getAttribute(name) !== value) el.setAttribute(name, value);
+  const kids = [...el.childNodes], nextKids = [...next.childNodes];
+  nextKids.forEach((n, i) => (i < kids.length ? morph(kids[i], n) : el.append(n)));
+  for (const k of kids.slice(nextKids.length)) k.remove();
+}
+
 /**
  * A whole-number <input type=number> that never holds a negative: '-', '+', 'e' and '.' can't be
  * typed, and a pasted or autofilled value is turned into a whole, non-negative number.
@@ -43,6 +63,9 @@ export function wholeNumberInput(attrs) {
   });
   return input;
 }
+
+/** A player-chosen name, isolated (<bdi>) so a right-to-left name keeps its direction beside other text. */
+export const nameEl = (name) => h('bdi', {}, name);
 
 /** A colour dot for a player. */
 export const dot = (color) => h('span', { class: 'dot', style: { background: color } });

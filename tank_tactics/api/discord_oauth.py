@@ -7,6 +7,12 @@ redirects back to ``/api/discord/callback`` with a one-time code. The server swa
 code for a token response that includes the new webhook, using the app's client secret,
 which never leaves the server. The ``state`` parameter ties the redirect to the game
 and host that started it: it is random, single-use and expires after ``STATE_TTL``.
+
+The state alone isn't enough: a host could start an attempt and send the Discord link to
+someone else, whose channel would then get the host's game updates. So each attempt also
+has a browser key, set as an HttpOnly cookie on the browser that started it
+(``api/routes/discord.py``), and the callback accepts the state only together with that
+key, as RFC 9700 (OAuth 2.0 security best practice) recommends.
 """
 from __future__ import annotations
 
@@ -34,7 +40,14 @@ class Pending:
     game_id: str
     player_id: str
     redirect_uri: str
+    browser_key: str
     expires: float
+
+
+@dataclass(frozen=True)
+class Started:
+    url: str  # Discord's authorize page
+    browser_key: str  # for the cookie of the browser that goes there
 
 
 class DiscordConnect:
@@ -47,28 +60,32 @@ class DiscordConnect:
         self._pending: dict[str, Pending] = {}
         self._lock = threading.Lock()
 
-    def authorize_url(self, game_id: str, player_id: str, origin: str) -> str:
-        """The Discord page to send the host to. ``origin`` is the site the host is on
-        (Discord only accepts redirect URIs registered for the app, so a wrong one fails there)."""
-        state = secrets.token_urlsafe(24)
+    def start(self, game_id: str, player_id: str, origin: str) -> Started:
+        """The Discord page to send the host to, and the key their browser must bring back.
+        ``origin`` is the site the host is on (Discord only accepts redirect URIs registered
+        for the app, so a wrong one fails there)."""
+        state, browser_key = secrets.token_urlsafe(24), secrets.token_urlsafe(24)
         redirect_uri = origin.rstrip("/") + CALLBACK_PATH
         now = time.monotonic()
         with self._lock:
             self._pending = {k: p for k, p in self._pending.items() if p.expires > now}
             if len(self._pending) >= MAX_PENDING:
                 self._pending.pop(next(iter(self._pending)))
-            self._pending[state] = Pending(game_id, player_id, redirect_uri, now + STATE_TTL)
+            self._pending[state] = Pending(game_id, player_id, redirect_uri, browser_key, now + STATE_TTL)
         query = {
             "client_id": self.client_id, "response_type": "code", "scope": "webhook.incoming",
             "redirect_uri": redirect_uri, "state": state, "prompt": "consent",
         }
-        return f"{AUTHORIZE_URL}?{urlencode(query)}"
+        return Started(f"{AUTHORIZE_URL}?{urlencode(query)}", browser_key)
 
-    def take(self, state: str) -> Pending | None:
-        """The connect attempt ``state`` belongs to, once only, or None if unknown or expired."""
+    def take(self, state: str, browser_key: str) -> Pending | None:
+        """The connect attempt ``state`` belongs to, once only, or None if it is unknown,
+        expired or was started in another browser (``browser_key`` doesn't match)."""
         with self._lock:
             p = self._pending.pop(state, None)
-        return p if p and p.expires > time.monotonic() else None
+        if p is None or p.expires <= time.monotonic():
+            return None
+        return p if secrets.compare_digest(p.browser_key, browser_key) else None
 
     def exchange(self, code: str, redirect_uri: str) -> str:
         """Swap the authorization code for the URL of the webhook Discord created."""

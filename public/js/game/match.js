@@ -68,7 +68,8 @@ export function renderTabs() {
 
 export function renderTab() {
   if (G.tab === 'chat') {
-    G.nodes.body.replaceChildren(G.nodes.chat);
+    // Re-inserting the panel on every state push would blur the message box (and close a phone's keyboard).
+    if (G.nodes.chat.parentNode !== G.nodes.body) G.nodes.body.replaceChildren(G.nodes.chat);
     renderChat();
   } else {
     G.nodes.body.replaceChildren((TABS[G.tab] || meTab)());

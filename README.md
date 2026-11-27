@@ -42,6 +42,8 @@ tank_tactics/
     notify.py    Discord webhook (public events only)
     discord_oauth.py  "Connect to Discord": the OAuth flow that creates the webhook
   server.py    entry point: runs the app with uvicorn
+  telemetry.py OpenTelemetry export (off unless OTEL_EXPORTER_OTLP_ENDPOINT is set)
+  redaction.py masks secrets in exported spans and logs
 public/        the web client (index.html, style.css, plain ES modules in js/)
   js/main.js   entry point: rules modal, global listeners, starts the router
   js/          dom, api, storage, auth, notify, format, router, config-form
@@ -84,6 +86,7 @@ is validated on startup.
 |---|---|---|
 | `HOST` | `0.0.0.0` | Bind address |
 | `PORT` | `8080` | HTTP port |
+| `SSL_CERTFILE`, `SSL_KEYFILE` | unset | TLS certificate chain and key (PEM); with both set the server speaks HTTPS only. The AWS deployment sets them (see deploy/aws/README.md) |
 | `DB_PATH` | `data/tank-tactics.db` | SQLite file (created on first run) |
 | `ALLOW_DEBUG` | `false` | Let hosts use the `debug.*` game options. Off hides them and the API rejects them; games that already use them keep them |
 | `ACTION_RATE_PER_SECOND` | `5` | Per-player action rate limit |
@@ -200,7 +203,7 @@ All state-changing requests use `Authorization: Bearer <player token>`.
 | `POST /api/games/{id}/reset-link` | | replaces your seat token: every older copy (rejoin links, other devices, claimed tokens) stops working and its connections close; unlinks the seat from its account. Returns the new credentials |
 | `WS /ws/{id}` | first message `{type: auth, token}` | pushes `{type: state, state}` on every change |
 | `GET /api/auth/config` | | `{google_client_id, discord_connect}`; `null` / `false` when off |
-| `POST /api/games/{id}/discord/connect` | `{origin}` | host, lobby only; returns `{url}`, Discord's page to pick a channel. Discord sends the host back to `GET /api/discord/callback`, which saves the webhook |
+| `POST /api/games/{id}/discord/connect` | `{origin}` | host, lobby only; returns `{url}`, Discord's page to pick a channel. Also sets an HttpOnly cookie that binds the attempt to this browser. Discord sends the host back to `GET /api/discord/callback`, which checks the cookie and saves the webhook |
 | `POST /api/auth/google` | `{credential}` | Google ID token in, `{token, user}` session out |
 | `POST /api/auth/logout` | | session; ends it (saved seat tokens keep working) |
 | `GET /api/me` · `GET /api/me/games` | | session; your account and your linked seats |

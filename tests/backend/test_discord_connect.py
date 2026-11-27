@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 from tank_tactics.api import create_app
 from tank_tactics.api import discord_oauth as discord_mod
 from tank_tactics.api.discord_oauth import DiscordConnect
+from tank_tactics.api.routes import discord as discord_routes
 
 from ..support import make_service
 from .test_api import auth, new_game
@@ -140,3 +141,42 @@ def test_off_without_discord_credentials(api):
 def test_config_reports_discord_connect(discord_api):
     client, _, _ = discord_api
     assert client.get("/api/auth/config").json()["discord_connect"] is True
+
+
+def test_the_link_only_works_in_the_browser_that_started_it(discord_api):
+    """A host who sends their Discord link to someone else must not get that person's channel."""
+    client, svc, fake = discord_api
+    host = new_game(client, names=("Ann", "Bob"))[0]
+    q = authorize(client, host)
+    with TestClient(client.app) as other_browser:  # no cookie from the host's start
+        r = other_browser.get("/api/discord/callback", params={"code": "abc", "state": q["state"]},
+                              follow_redirects=False)
+    assert r.headers["location"] == "/?discord=expired#/"
+    assert webhook_of(svc, host["game_id"]) is None and fake.exchanges == []
+    # The attempt is used up, so the host's own browser can't finish it either now.
+    assert callback(client, code="abc", state=q["state"]) == "/?discord=expired#/"
+
+
+def test_a_newer_attempt_replaces_the_older_one(discord_api):
+    client, svc, _ = discord_api
+    host = new_game(client, names=("Ann", "Bob"))[0]
+    first, second = authorize(client, host), authorize(client, host)
+    assert callback(client, code="abc", state=first["state"]) == "/?discord=expired#/"
+    assert webhook_of(svc, host["game_id"]) is None
+    # The callback cleared the cookie, so the second attempt needs it set again.
+    client.cookies.set(discord_routes.COOKIE, client.app.state.discord._pending[second["state"]].browser_key,
+                       path=discord_mod.CALLBACK_PATH)
+    assert callback(client, code="abc", state=second["state"]).startswith("/?discord=connected")
+
+
+@pytest.mark.parametrize("base_url, secure", [("http://testserver", False), ("https://testserver", True)])
+def test_browser_key_cookie(discord_api, base_url, secure):
+    client, _, _ = discord_api
+    host = new_game(client, names=("Ann", "Bob"))[0]
+    client.base_url = base_url
+    cookie = start(client, host).headers["set-cookie"].lower()
+    assert cookie.startswith(f"{discord_routes.COOKIE}=")
+    assert "httponly" in cookie and "samesite=lax" in cookie and "path=/api/discord/callback" in cookie
+    assert ("; secure" in cookie) is secure
+    cleared = client.get("/api/discord/callback", params={"state": "x"}, follow_redirects=False)
+    assert f'{discord_routes.COOKIE}=""' in cleared.headers["set-cookie"]

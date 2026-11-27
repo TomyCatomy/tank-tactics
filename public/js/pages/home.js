@@ -2,7 +2,7 @@
 import { accountApi, authConfig, browserZone, serverDefaults } from '../api.js';
 import { claimSeat, linkSavedSeats, mountGoogleButton, signOut } from '../auth.js';
 import { configForm } from '../config-form.js';
-import { $, h } from '../dom.js';
+import { $, h, nameEl } from '../dom.js';
 import { toast } from '../notify.js';
 import { account, saved } from '../storage.js';
 import { friendlyWarning, nameInput, spinner } from './shared.js';
@@ -48,7 +48,7 @@ export async function renderHome() {
 function accountCard(user, gButton) {
   if (user) {
     return h('div', { class: 'card row account' },
-      h('span', {}, 'Signed in as ', h('b', {}, user.name)),
+      h('span', {}, 'Signed in as ', h('b', {}, nameEl(user.name))),
       h('button', { class: 'shrink', onclick: signOut }, 'Sign out'));
   }
   return h('div', { class: 'account account-signin' },
@@ -73,7 +73,7 @@ function myGamesCard(remote, user) {
   return h('div', { class: 'card home-games' }, h('h2', {}, user ? 'Your games' : 'Your games on this device'),
     h('ul', { class: 'plist' }, games.map((g) => h('li', { class: 'clickable', onclick: () => open(g) },
       h('span', { class: 'pname' }, g.gid,
-        g.name ? h('span', { class: 'muted' }, ` · ${g.name}`) : null,
+        g.name ? h('span', { class: 'muted' }, ' · ', nameEl(g.name)) : null,
         g.status ? h('span', { class: 'muted small' }, ` · ${g.status}`) : null),
       h('span', { class: 'pstats' }, 'Open ›')))));
 }

@@ -1,6 +1,6 @@
 // Top-level rendering of a game page: the top bar, then the lobby, match or closed screen.
 import { $, fill, h, messageCard } from '../dom.js';
-import { copyText, toast } from '../notify.js';
+import { copyText, refreshSheet, toast } from '../notify.js';
 import { route } from '../router.js';
 import { saved } from '../storage.js';
 import { renderLobby } from './lobby.js';
@@ -15,6 +15,7 @@ export function render() {
   if (status === 'lobby') renderLobby();
   else if (status === 'closed') renderClosed();
   else renderMatch();
+  refreshSheet();
   updateCountdowns();
 }
 

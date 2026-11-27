@@ -75,6 +75,9 @@ Where the spec left room for interpretation, this is what I chose and why.
     `webhook.incoming` flow: Discord shows a server and channel picker and creates the
     webhook). Like every setting it is lobby-only. The OAuth `state` is single-use and
     expires after 10 minutes, and Discord only redirects to the app's registered URLs.
+    The state is also bound to the browser that started it, through an HttpOnly cookie
+    sent only to the callback, so a host can't send the Discord link to someone else and
+    get their channel. Only the latest attempt per browser works.
     Pasting a URL still works as a fallback. Pending attempts live in memory, so a
     restart mid-way just means clicking the button again.
 
@@ -236,3 +239,12 @@ Where the spec left room for interpretation, this is what I chose and why.
     at once under the Google profile name (cut to the 24-character limit), or reopens the
     account's existing seat if it already has one in that game. If the join fails (say the
     name is taken), the page shows the signed-in form prefilled with that name to change.
+39. **A strict Content-Security-Policy with Trusted Types** (`api/security.py`) backs up
+    the client's no-`innerHTML` rule, because seat and session tokens sit in
+    localStorage where any injected script could read them. Only our scripts and
+    Google's sign-in library run; scripts get no `unsafe-inline` or `unsafe-eval` (inline
+    styles are allowed, as Google's button sets some and CSS can't run code), and the
+    one Trusted Types policy (`public/js/trusted.js`) only allows Google's script URL.
+    The API docs at `/docs` get a looser policy (Swagger UI loads from jsdelivr with an
+    inline script); they carry no tokens. HSTS is sent everywhere and ignored over the
+    plain-http localhost.

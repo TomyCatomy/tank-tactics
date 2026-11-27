@@ -1,7 +1,8 @@
 // The lobby screen: invite links, players, chat and settings. On phones one panel shows at a time.
 import { api, authConfig } from '../api.js';
 import { configForm } from '../config-form.js';
-import { $, dot, fill, h, helpTip, tabButtons } from '../dom.js';
+import { $, dot, fill, h, helpTip, nameEl, tabButtons } from '../dom.js';
+import { isolate } from '../format.js';
 import { copyRow, toast } from '../notify.js';
 import { route } from '../router.js';
 import { saved } from '../storage.js';
@@ -73,12 +74,12 @@ function renderPlayers() {
   const st = G.state, my = me(), isHost = !!my?.is_host;
   const mySeats = new Set(saved.seats(G.gid).map((x) => x.playerId));
   const remove = async (p) => {
-    if (confirm(`Remove ${p.name} from the lobby?`)) { await post('remove', { player_id: p.id }); refresh(); }
+    if (confirm(`Remove ${isolate(p.name)} from the lobby?`)) { await post('remove', { player_id: p.id }); refresh(); }
   };
   fill(G.nodes.players, h('h2', {}, `Players (${st.players.length}/${st.game.config.players.maximum})`),
     h('ul', { class: 'plist' }, st.players.map((p) => h('li', {},
       dot(p.color),
-      h('span', { class: 'pname' }, p.name, p.id === my?.id ? ' (you)' : '', p.is_host ? ' · host' : ''),
+      h('span', { class: 'pname' }, nameEl(p.name), p.id === my?.id ? ' (you)' : '', p.is_host ? ' · host' : ''),
       p.id !== my?.id && mySeats.has(p.id) ? h('button', { class: 'small', onclick: () => switchSeat(p.id) }, 'Play as') : null,
       isHost && !p.is_host ? h('button', { class: 'small danger', onclick: () => remove(p) }, 'Remove') : null))));
 }

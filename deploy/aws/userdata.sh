@@ -1,11 +1,13 @@
 #!/bin/bash
 # EC2 user data (first boot) for the Tank Tactics server on Amazon Linux 2023.
-# The AWS deploy workflow substitutes __BUCKET__, __REGION__ and __FETCH_CONFIG_B64__
-# (deploy/aws/fetch-config.sh, base64-encoded).
+# The AWS deploy workflow substitutes __BUCKET__, __REGION__, __ORIGIN_HOST__, and
+# __FETCH_CONFIG_B64__ and __TLS_B64__ (deploy/aws/fetch-config.sh and tls.sh, base64-encoded).
 set -euxo pipefail
 install -m 600 /dev/null /etc/tank-tactics.env  # may hold the Grafana Cloud token
 echo '__FETCH_CONFIG_B64__' | base64 -d > /usr/local/bin/tank-tactics-config
 chmod 755 /usr/local/bin/tank-tactics-config
+echo '__TLS_B64__' | base64 -d > /usr/local/bin/tank-tactics-tls
+chmod 755 /usr/local/bin/tank-tactics-tls
 # Settings from SSM Parameter Store. Google sign-in is required: if this fails, boot stops
 # here, the game never starts, and the workflow's `up` check fails.
 /usr/local/bin/tank-tactics-config
@@ -15,6 +17,9 @@ id tanktactics >/dev/null 2>&1 || useradd --system --home-dir /opt/tank-tactics 
 mkdir -p /opt/tank-tactics /var/lib/tank-tactics
 chown tanktactics:tanktactics /var/lib/tank-tactics && chmod 700 /var/lib/tank-tactics
 [ -x /opt/tank-tactics/venv/bin/python ] || "$PY" -m venv /opt/tank-tactics/venv
+# The origin certificate (HTTPS on 8443, CloudFront's only way in). If it can't be had,
+# boot stops here like a missing setting does, and the workflow's `up` check fails.
+/usr/local/bin/tank-tactics-tls issue __ORIGIN_HOST__
 
 cat > /usr/local/bin/tank-tactics-deploy <<'DEPLOY'
 #!/bin/bash

@@ -21,6 +21,7 @@ from .errors import error_response, install_error_handlers
 from .discord_oauth import DiscordConnect
 from .hub import Hub
 from .google import GoogleTokenVerifier, GoogleVerifier
+from .security import headers_for
 from .routes import auth, chat, discord, games, live, lobby, play
 
 PUBLIC_DIR = Path(__file__).resolve().parent.parent.parent / "public"
@@ -60,11 +61,8 @@ def create_app(
         if size is not None and size.isdigit() and int(size) > MAX_BODY_BYTES:
             return error_response("too_large", "Request body too large.", 413)
         response = await call_next(request)
-        response.headers.setdefault("X-Content-Type-Options", "nosniff")
-        # Google's sign-in button checks the page origin via the referrer, so send the
-        # origin (never the path) cross-origin. Rejoin tokens live in the URL fragment,
-        # which browsers never put in a referrer.
-        response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        for name, value in headers_for(request.url.path).items():
+            response.headers.setdefault(name, value)
         if not request.url.path.startswith("/api/"):
             response.headers.setdefault("Cache-Control", "no-cache")
         return response

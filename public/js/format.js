@@ -24,6 +24,12 @@ export const pad2 = (n) => String(n).padStart(2, '0');
 /** 1st, 2nd, 3rd, 4th, 11th, 21st, ... */
 export const dayOrdinal = (d) => `${d}${(d % 100 >= 11 && d % 100 <= 13) ? 'th' : ({ 1: 'st', 2: 'nd', 3: 'rd' }[d % 10] || 'th')}`;
 
+/**
+ * A player-chosen name, isolated from the text around it (Unicode FSI…PDI), so a right-to-left name
+ * such as Hebrew keeps its own direction and doesn't reorder the punctuation and numbers beside it.
+ */
+export const isolate = (name) => `⁨${name}⁩`;
+
 export const initials = (name) => name.split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase() || '?';
 
 /** Whether b is one move from a: up, down, left or right (no diagonals), like the server. */
