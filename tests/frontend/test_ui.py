@@ -874,3 +874,15 @@ def test_range_shading_is_a_straight_line_disc(server, page):
         shaded |= {(x + i, y + j) for i in range(int(w)) for j in range(int(hgt))}
     want = {(x, y) for x in range(12) for y in range(12) if (x - me["x"]) ** 2 + (y - me["y"]) ** 2 <= 9}
     assert shaded == want
+
+
+def test_tapping_another_tank_opens_its_action_sheet(server, page):
+    host, _ = create_game(server)
+    with httpx.Client(base_url=server.url) as c:
+        r = c.post(f"/api/games/{host['game_id']}/start", headers={"Authorization": f"Bearer {host['token']}"})
+        assert r.status_code == 200, r.text
+    open_as(page, server, host)
+    page.get_by_text("Players", exact=True).click()
+    page.locator(".plist li", has_text="Bob").click()
+    for action in ("Shoot", "Give AP", "Open DM"):
+        page.get_by_role("button", name=action).wait_for()

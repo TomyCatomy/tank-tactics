@@ -19,7 +19,7 @@ Be the **last tank standing**.
 
 ## Your tank
 
-You start with **3 HP**, **1 AP** (action point) and **range 3**. The host may have
+You start with **3 HP**, **0 AP** (action points) and **range 3**. The host may have
 changed these numbers; the game page shows the real values.
 
 ## Action points
@@ -48,7 +48,8 @@ changed these numbers; the game page shows the real values.
 ## Destroying tanks
 
 - A tank at **0 HP is destroyed** and taken off the board.
-- **Loot:** whoever fires the destroying shot takes **all of the victim's AP**.
+- **Loot (off by default):** if the host turns it on, whoever fires the destroying shot
+  takes **all of the victim's AP**.
 - If your tank is destroyed you can still watch the game and use the public chat.
   You can no longer send or receive private messages.
 
@@ -60,9 +61,9 @@ and nothing stops them from doing it to you.
 
 ## Optional rules (the host chooses)
 
-### The jury (off by default)
+### The jury (on by default)
 
-If the jury is on, destroyed players become **jurors**. Each AP tick closes a jury
+While the jury is on, destroyed players become **jurors**. Each AP tick closes a jury
 cycle, so with the default schedule that's once a day. During a cycle each juror can vote
 for one living player, and can change that vote until the cycle closes. The cycle closes
 just after that tick's AP is handed out. The living player
@@ -86,7 +87,8 @@ Positions, HP, range, shots, moves, kills, range upgrades and the winner are alw
 
 The host can also change the board size, starting stats, the AP schedule, the
 upgrade cost, an AP cap or a maximum range, and whether destroyed tanks leave wrecks that
-block their tile. The host can also turn off giving HP or looting, and set a time limit.
+block their tile. The host can also turn off giving HP or the jury, turn on looting, and set a time limit
+in days.
 The time limit ends the game on the next whole minute after it runs out, and no
 AP arrives at that moment. When it is reached, the living tank with the most HP wins. Ties go to the most
 AP, then the highest range. If still tied, the win is shared.
