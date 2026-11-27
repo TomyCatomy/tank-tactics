@@ -990,6 +990,22 @@ def auth_boundaries(t: T):
 
 
 @scenario("protocol")
+def security_headers_on_every_response(t: T):
+    a, _ = t.game(2)
+    for path, seat in (("/", None), ("/static/js/main.js", None), ("/api/defaults", None),
+                       (f"/api/games/{a.game_id}/state", a), ("/api/nope", None)):
+        r = t.req("GET", path, seat)
+        csp = r.headers.get("content-security-policy", "")
+        for directive in ("default-src 'self'", "object-src 'none'", "frame-ancestors 'none'",
+                          "require-trusted-types-for 'script'"):
+            t.ok(directive in csp, f"{path}: CSP has {directive}")
+        script_src = next((d for d in csp.split("; ") if d.startswith("script-src")), "")
+        t.ok(script_src and "unsafe" not in script_src, f"{path}: CSP allows no inline script or eval")
+        t.eq(r.headers.get("x-content-type-options"), "nosniff", f"{path}: nosniff")
+        t.ok(r.headers.get("strict-transport-security", "").startswith("max-age="), f"{path}: HSTS")
+
+
+@scenario("protocol")
 def malformed_requests_get_clean_errors(t: T):
     a, b = t.game(2)
     url = f"/api/games/{a.game_id}/action"

@@ -743,8 +743,8 @@ def test_schedule_custom_builder_writes_the_rule(server, page):
     wait_summary(page, "Monthly on the last day at 18:45")
     assert raw_rule(page) == "FREQ=MONTHLY;BYMONTHDAY=-1;BYHOUR=18;BYMINUTE=45"
     builder.locator("input[value=last]").check()
-    page.wait_for_function("(t => t.includes('Monthly on the last') && !t.includes('last day'))"
-                           "(document.querySelector('.sched-summary').textContent)")
+    page.wait_for_function("() => { const t = document.querySelector('.sched-summary').textContent;"
+                           " return t.includes('Monthly on the last') && !t.includes('last day'); }")
     assert "BYSETPOS=-1" in raw_rule(page)
     builder.get_by_label("Repeat unit").select_option("week")
     every = builder.get_by_label("Repeat every")

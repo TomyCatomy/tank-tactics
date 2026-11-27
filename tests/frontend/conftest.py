@@ -128,8 +128,37 @@ def browser():
             if os.environ.get("CI"):  # in CI a missing browser must not turn into a green run
                 pytest.fail(message)
             pytest.skip(message)
+        _report_policy_violations(launched)
         yield launched
         launched.close()
+
+
+# Console messages and uncaught errors that mean the Content-Security-Policy or Trusted
+# Types blocked something the page tried to do.
+_POLICY_MARKERS = ("Content Security Policy", "Trusted Type", "TrustedScriptURL", "TrustedHTML", "TrustedScript")
+_violations: list[str] = []
+
+
+def _report_policy_violations(browser) -> None:
+    """Record policy violations from every context the tests open, however they open it."""
+    new_context = browser.new_context
+
+    def tracked(*args, **kwargs):
+        ctx = new_context(*args, **kwargs)
+        hit = lambda text: any(m in text for m in _POLICY_MARKERS)  # noqa: E731
+        ctx.on("console", lambda msg: hit(msg.text) and _violations.append(msg.text))
+        ctx.on("weberror", lambda err: hit(str(err.error)) and _violations.append(str(err.error)))
+        return ctx
+
+    browser.new_context = tracked
+
+
+@pytest.fixture(autouse=True)
+def no_policy_violations():
+    """Every browser test also checks that the security headers never blocked the page."""
+    _violations.clear()
+    yield
+    assert not _violations, f"blocked by the Content-Security-Policy: {_violations}"
 
 
 @pytest.fixture
