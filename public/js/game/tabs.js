@@ -19,7 +19,7 @@ function notificationsButton() {
 export function meTab() {
   const st = G.state, my = me(), c = st.game.config, active = st.game.status === 'active';
   if (!my) return h('p', {}, 'Spectating.');
-  const inRange = st.players.filter((p) => p.alive && p.id !== my.id && inRange(my, p, my.action_range)).length;
+  const targets = st.players.filter((p) => p.alive && p.id !== my.id && inRange(my, p, my.action_range)).length;
   const canMove = freeNeighbours(my, st.players, st.game.board_size, c).length > 0;
   const upgradeCost = c.actions.range_upgrade_cost, maxRange = c.actions.max_range;
   const capped = maxRange !== null && my.action_range >= maxRange;
@@ -40,7 +40,7 @@ export function meTab() {
     scheduleSummary() ? h('p', { class: 'muted small sched-line' }, 'AP schedule: ', scheduleSummary()) : null,
     active && my.alive ? h('ul', { class: 'actions-list' },
       item('Move', '1 AP', blockers({ cost: 1 }) || (canMove ? 'Tap a highlighted tile next to your tank.' : 'No free adjacent tiles.')),
-      item('Shoot', '1 AP', blockers({ cost: 1 }) || (inRange ? `${inRange} tank(s) in range: tap one.` : 'No tanks in range.')),
+      item('Shoot', '1 AP', blockers({ cost: 1 }) || (targets ? `${targets} tank(s) in range: tap one.` : 'No tanks in range.')),
       item('Give AP', 'the AP given', blockers({ cost: 1 }) || 'Tap a tank in range.'),
       item('Give HP', 'the HP given', !c.actions.allow_give_hp ? 'Disabled in this game.'
         : blockers() || (my.hp <= 1 ? 'You must keep at least 1 HP.' : 'Tap a tank in range.')),
