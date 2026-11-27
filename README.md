@@ -42,6 +42,8 @@ tank_tactics/
     notify.py    Discord webhook (public events only)
     discord_oauth.py  "Connect to Discord": the OAuth flow that creates the webhook
   server.py    entry point: runs the app with uvicorn
+  telemetry.py OpenTelemetry export (off unless OTEL_EXPORTER_OTLP_ENDPOINT is set)
+  redaction.py masks secrets in exported spans and logs
 public/        the web client (index.html, style.css, plain ES modules in js/)
   js/main.js   entry point: rules modal, global listeners, starts the router
   js/          dom, api, storage, auth, notify, format, router, config-form
