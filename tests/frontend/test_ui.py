@@ -9,6 +9,8 @@ import time
 import httpx
 import pytest
 
+from tank_tactics.config import GameConfig
+
 
 def create_game(server, players=("Host", "Bob"), config=None) -> list[dict]:
     with httpx.Client(base_url=server.url) as c:
@@ -902,3 +904,13 @@ def test_me_tab_shows_your_stats_and_actions(server, page):
     assert "in range" in page.locator(".actions-list").inner_text()
     assert errors == []
 
+
+def test_rules_modal_states_the_real_defaults(server, page):
+    defaults = GameConfig()
+    page.goto(server.url)
+    page.locator("#rules-open").click()
+    text = " ".join(page.locator("#rules-modal").inner_text().split())
+    start = defaults.start
+    assert f"You start with {start.hp} HP, {start.ap} AP" in text and f"range {start.action_range}." in text
+    assert f"Loot ({'on' if defaults.actions.loot_on_kill else 'off'} by default)" in text
+    assert f"The jury ({'on' if defaults.jury.enabled else 'off'} by default)" in text
