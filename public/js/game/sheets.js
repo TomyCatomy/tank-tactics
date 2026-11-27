@@ -66,7 +66,7 @@ export function openTargetSheet(id) {
   if (!t) return;
   const d = my && my.x >= 0 ? rangeDist(my, t) : null;
   const apIn = amountInput('AP'), hpIn = amountInput('HP');
-  const inRange = blockers({ cost: 1, target: t, needRange: true });
+  const rangeBlocker = blockers({ cost: 1, target: t, needRange: true });
   const removePlayer = async () => {
     if (confirm(`Remove ${t.name}? Their tank will be destroyed.`) && await post('remove', { player_id: t.id })) { closeSheet(); refresh(); }
   };
@@ -74,8 +74,8 @@ export function openTargetSheet(id) {
     h('h2', {}, dot(t.color), t.name),
     h('p', { class: 'muted' }, `HP ${t.hp} · Range ${t.action_range}`, t.ap !== undefined ? ` · AP ${t.ap}` : '', d !== null ? ` · distance ${fmtDist(d)}` : '',
       my && d !== null && inRange(t, my, t.action_range) ? ' · you are in their range' : ''),
-    actRow('Shoot', '1 AP · 1 damage', inRange, () => doAction({ type: 'shoot', target_id: t.id })),
-    actRow('Give AP', 'costs the AP you give', inRange,
+    actRow('Shoot', '1 AP · 1 damage', rangeBlocker, () => doAction({ type: 'shoot', target_id: t.id })),
+    actRow('Give AP', 'costs the AP you give', rangeBlocker,
       () => doAction({ type: 'give_ap', target_id: t.id, amount: Number(apIn.value) }), apIn),
     actRow('Give HP', 'costs the HP you give', giveHpBlocker(t),
       () => doAction({ type: 'give_hp', target_id: t.id, amount: Number(hpIn.value) }), hpIn),
