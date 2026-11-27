@@ -18,6 +18,11 @@
 # (SecureString), optional: the Discord app behind the lobby's "Connect to Discord"
 # button. With neither the button is hidden; with only one the deploy fails. The secret
 # is never printed either.
+# /tank-tactics/database-url and /tank-tactics/database-url-unpooled (SecureString),
+# optional: Neon's pooled and direct Postgres URLs (`neon env pull` writes them as
+# DATABASE_URL and DATABASE_URL_UNPOOLED). With neither, the server keeps its SQLite file;
+# with only one, or values that aren't a pooled and a direct postgres URL, the deploy fails.
+# They hold the database password, so only the host is printed.
 set -euo pipefail
 
 REGION=eu-north-1
@@ -97,6 +102,35 @@ if [[ -n "$discord_id" || -n "$discord_secret" ]]; then
   fi
 fi
 
+if ! db=$(aws ssm get-parameters --region "$REGION" --with-decryption --output text \
+    --names /tank-tactics/database-url /tank-tactics/database-url-unpooled \
+    --query '[Parameters[?Name==`/tank-tactics/database-url`].Value|[0],
+              Parameters[?Name==`/tank-tactics/database-url-unpooled`].Value|[0]]'); then
+  echo "Cannot read the /tank-tactics/database-url* SSM parameters." >&2
+  exit 1
+fi
+IFS=$'\t' read -r db_url db_url_unpooled <<<"$db"
+[[ "$db_url" == None ]] && db_url=""
+[[ "$db_url_unpooled" == None ]] && db_url_unpooled=""
+db_host=""
+if [[ -n "$db_url" || -n "$db_url_unpooled" ]]; then
+  if [[ -z "$db_url" || -z "$db_url_unpooled" ]]; then
+    echo "Set both /tank-tactics/database-url and /tank-tactics/database-url-unpooled, or neither." >&2
+    exit 1
+  fi
+  # postgres[ql]://user:password@host[:port]/db?options; the pooled host has -pooler in it.
+  url_re='^postgres(ql)?://[^[:space:]@/]+@([^[:space:]/:@]+)(:[0-9]+)?/[^[:space:]]+$'
+  if ! [[ "$db_url" =~ $url_re && "${BASH_REMATCH[2]}" == *-pooler.* ]]; then
+    echo "/tank-tactics/database-url must be Neon's pooled postgres URL (host with -pooler)." >&2
+    exit 1
+  fi
+  db_host=${BASH_REMATCH[2]}
+  if ! [[ "$db_url_unpooled" =~ $url_re && "${BASH_REMATCH[2]}" != *-pooler.* ]]; then
+    echo "/tank-tactics/database-url-unpooled must be Neon's direct postgres URL (host without -pooler)." >&2
+    exit 1
+  fi
+fi
+
 trap 'rm -f "$ENV_FILE.new"' EXIT
 install -m 600 /dev/null "$ENV_FILE.new"
 echo "GOOGLE_CLIENT_ID=$client_id" > "$ENV_FILE.new"
@@ -113,7 +147,14 @@ if [[ -n "$discord_id" ]]; then
     echo "DISCORD_CLIENT_SECRET=$discord_secret"
   } >> "$ENV_FILE.new"
 fi
+if [[ -n "$db_url" ]]; then
+  {
+    echo "DATABASE_URL=$db_url"
+    echo "DATABASE_URL_UNPOOLED=$db_url_unpooled"
+  } >> "$ENV_FILE.new"
+fi
 mv "$ENV_FILE.new" "$ENV_FILE"
 echo "Google sign-in: on"
 echo "Telemetry export: ${otel_endpoint:-off}"
 echo "Discord connect: $([[ -n "$discord_id" ]] && echo on || echo off)"
+echo "Database: ${db_host:+Postgres at $db_host}${db_host:-SQLite file}"
