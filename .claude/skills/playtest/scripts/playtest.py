@@ -345,6 +345,22 @@ def leave_then_rejoin(t: T):
 
 
 @scenario("lobby")
+def reset_link_revokes_old_tokens(t: T):
+    h, b = t.game(2)
+    old = h.token
+    r = t.good(t.post(h, "reset-link"), "reset my link")
+    new = r.json()
+    t.eq((new["game_id"], new["player_id"]), (h.game_id, h.id), "same seat")
+    t.ok(new["token"] != old, "a new token")
+    t.err(t.req("GET", f"/api/games/{h.game_id}/state", old), 401, "unauthorized", "old token after reset")
+    t.err(t.req("POST", f"/api/games/{h.game_id}/reset-link", old), 401, "unauthorized", "reset with the old token")
+    h.token = new["token"]
+    t.eq(t.view(h)["viewer_id"], h.id, "new token opens the seat")
+    t.eq(t.view(b)["viewer_id"], b.id, "other seats untouched")
+    t.good(t.act(h, "upgrade"), "play on with the new token")
+
+
+@scenario("lobby")
 def closed_lobby_is_final(t: T):
     h, b = t.lobby(2)
     t.good(t.post(h, "close"), "close lobby")

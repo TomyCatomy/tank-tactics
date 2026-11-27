@@ -368,6 +368,13 @@ def g_game(pg, url, fx, api):
     if first.count():
         first.click()
         settle(pg)
+    rejoin = pg.get_by_role("button", name="Your rejoin link")  # on the Me tab
+    if rejoin.count():
+        rejoin.first.click()
+        pg.wait_for_selector(".sheet .rejoin")
+        settle(pg)
+        yield "game-sheet-rejoin-link"
+        close_sheet(pg)
     if tap_tank(pg, api, a, a):
         yield "game-sheet-own-tank"
         close_sheet(pg)

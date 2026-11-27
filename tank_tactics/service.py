@@ -86,6 +86,9 @@ class GameService:
         self.preview_limiter = RateLimiter(5, 30, clock)
         # Called with (game_id, new_entries) after every committed change. The API's Hub hooks this.
         self.on_change: Callable[[str, list[game.LogEntry]], None] = lambda gid, entries: None
+        # Called with (game_id, player_id) when a seat's old tokens stop working, so the Hub
+        # can drop the sockets that were opened with them.
+        self.on_revoke: Callable[[str, str], None] = lambda gid, pid: None
 
     # -- helpers ----------------------------------------------------------------
 
@@ -352,6 +355,25 @@ class GameService:
             self.store.add_seat_token(th, game_id, player_id, self.clock())
             with self._global:
                 self.tokens[th] = (game_id, player_id)
+        return {"game_id": game_id, "player_id": player_id, "token": token}
+
+    def reset_seat_token(self, game_id: str, player_id: str) -> dict[str, str]:
+        """Replace every token for this seat (its rejoin link, other devices, claimed
+        tokens) with one new token, and unlink the seat from its account. The caller
+        relinks it with the new token if it is signed in. Returns the new credentials."""
+        if not self.action_limiter.allow(player_id):
+            raise ServiceError("rate_limited", "Slow down: too many requests.", 429)
+        token = secrets.token_urlsafe(24)
+        th = hash_token(token)
+        with self._lock(game_id):
+            # Under the game lock, so a concurrent removal or claim can't slip in between.
+            if game.find_player(self._game(game_id), player_id) is None or not self.store.reset_seat_tokens(
+                    game_id, player_id, th):
+                raise ServiceError("not_found", "You have no seat in this game.", 404)
+            self._revoke_token(game_id, player_id)
+            with self._global:
+                self.tokens[th] = (game_id, player_id)
+        self.on_revoke(game_id, player_id)
         return {"game_id": game_id, "player_id": player_id, "token": token}
 
     # -- game actions -----------------------------------------------------------

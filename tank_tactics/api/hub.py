@@ -28,6 +28,7 @@ class Hub:
         """Start receiving change notifications from the service."""
         self._loop = loop
         self.service.on_change = self._on_change
+        self.service.on_revoke = self._on_revoke
 
     def spawn(self, coro: Coroutine[Any, Any, Any]) -> None:
         task = asyncio.ensure_future(coro)
@@ -60,12 +61,32 @@ class Hub:
             except Exception:
                 self.disconnect(game_id, ws)
 
+    async def kick(self, game_id: str, player_id: str, code: str, message: str) -> None:
+        """Tell every socket open as this player why it is being closed, then close it."""
+        for ws, pid in list(self.sockets.get(game_id, {}).items()):
+            if pid != player_id:
+                continue
+            self.disconnect(game_id, ws)
+            try:
+                await ws.send_json({"type": "error", "error": {"code": code, "message": message}})
+                await ws.close(code=4401)
+            except Exception:
+                pass
+
     # -- change notifications ---------------------------------------------------------
 
     def _on_change(self, game_id: str, entries: list[game.LogEntry]) -> None:
         # Called from whichever thread ran the request; hop onto the event loop.
         if self._loop is not None:
             self._loop.call_soon_threadsafe(self._changed, game_id, entries)
+
+    def _on_revoke(self, game_id: str, player_id: str) -> None:
+        # The sockets were opened with tokens that no longer work (the resetting device's
+        # included: it reconnects with its new token).
+        if self._loop is not None:
+            self._loop.call_soon_threadsafe(self.spawn, self.kick(
+                game_id, player_id, "link_reset",
+                "Your rejoin link was reset, so this device's copy no longer works. Open the new link to continue."))
 
     def _changed(self, game_id: str, entries: list[game.LogEntry]) -> None:
         self.wake.set()  # e.g. a game just started: the next due tick moved earlier

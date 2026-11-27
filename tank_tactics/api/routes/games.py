@@ -57,3 +57,11 @@ def join_game(game_id: str, body: JoinRequest, service: ServiceDep, user: Option
 def game_state(player: PlayerDep) -> dict[str, Any]:
     """The caller's fog-of-war-redacted view (the same payload the WebSocket pushes)."""
     return player.service.view(player.game_id, player.player_id)
+
+
+@router.post("/games/{game_id}/reset-link")
+def reset_link(player: PlayerDep) -> Credentials:
+    """Replace the caller's seat token, so every older copy of it (rejoin links, other
+    devices) stops working, and their live connections are closed. The seat is unlinked
+    from any account; post the new token to ``/api/me/seats/link`` to link it again."""
+    return Credentials(**player.service.reset_seat_token(player.game_id, player.player_id))
