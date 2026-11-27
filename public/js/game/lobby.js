@@ -5,6 +5,7 @@ import { $, dot, fill, h, helpTip, tabButtons } from '../dom.js';
 import { copyRow, toast } from '../notify.js';
 import { route } from '../router.js';
 import { saved } from '../storage.js';
+import { rejoinBlock } from './rejoin.js';
 import { chatPanel, renderChat, scrollChatToEnd, unreadTotal } from './chat.js';
 import { G, me, post, postAndRefresh, refresh } from './session.js';
 import { render, switchSeat } from './view.js';
@@ -27,7 +28,7 @@ function buildLobby() {
       h('h2', {}, 'Lobby'),
       n.intro,
       copyRow('Invite link', `${location.origin}/#/join/${id}`),
-      copyRow('Your personal rejoin link (keep it secret: it controls your tank)', `${location.origin}/#/g/${id}?t=${encodeURIComponent(G.token)}`),
+      rejoinBlock(),
       n.start),
     players: h('div', { class: 'stack lobby-panel lobby-players' }, n.seats, h('div', { class: 'card' }, n.players)),
     chat: h('div', { class: 'card lobby-panel lobby-chat' }, h('h2', {}, 'Chat'), n.chat),

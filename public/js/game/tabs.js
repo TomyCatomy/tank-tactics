@@ -4,6 +4,7 @@ import { countBy, fmtTime, inRange } from '../format.js';
 import { freeNeighbours, selectPlayer } from './board.js';
 import { describe, involves } from './events.js';
 import { renderTab } from './match.js';
+import { openRejoinSheet } from './rejoin.js';
 import { G, me, postAndRefresh } from './session.js';
 import { blockers, doAction } from './sheets.js';
 
@@ -50,7 +51,8 @@ export function meTab() {
       : null,
     h('p', { class: 'muted small', style: { marginTop: '12px' } },
       'AP builds up over time; there are no turns. Spend it whenever you like. ',
-      c.fog_of_war === 'alliance' ? 'Fog of war is on: only you can see your AP, and gifts are private.' : 'Everything, including AP and gifts, is public.'));
+      c.fog_of_war === 'alliance' ? 'Fog of war is on: only you can see your AP, and gifts are private.' : 'Everything, including AP and gifts, is public.'),
+    h('button', { class: 'small', type: 'button', onclick: openRejoinSheet }, 'Your rejoin link'));
 }
 
 export function playersTab() {

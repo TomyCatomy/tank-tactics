@@ -353,6 +353,18 @@ class Store:
         with self._lock, self._sessions.begin() as session:
             session.add(SeatTokenRow(token_hash=token_hash, player_id=player_id, game_id=game_id, created_at=now))
 
+    def reset_seat_tokens(self, game_id: str, player_id: str, token_hash: str) -> bool:
+        """Make ``token_hash`` the seat's only token: the original is replaced, extra
+        (claimed) tokens are deleted, and the seat is unlinked from its account, since
+        whoever linked it may have done so with a leaked token. False if there is no such seat."""
+        with self._lock, self._sessions.begin() as session:
+            row = session.get(PlayerRow, player_id)
+            if row is None or row.game_id != game_id:
+                return False
+            row.token_hash, row.user_id = token_hash, None
+            session.execute(delete(SeatTokenRow).where(SeatTokenRow.player_id == player_id))
+            return True
+
     def load_messages(self, game_id: str) -> list[Message]:
         with self._lock, self._sessions() as session:
             q = select(MessageRow).where(MessageRow.game_id == game_id).order_by(MessageRow.id)

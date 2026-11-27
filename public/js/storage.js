@@ -56,6 +56,14 @@ export const saved = {
     this.set(gid, { ...v, seats, token: active.token, playerId: active.playerId, name: active.name });
     return true;
   },
+  /** Swap one of this game's seat tokens for a new one (after a link reset). */
+  replaceToken(gid, oldToken, token) {
+    const v = this.get(gid);
+    if (!v) return;
+    const seats = Object.fromEntries(Object.entries(v.seats || {})
+      .map(([pid, s]) => [pid, s.token === oldToken ? { ...s, token } : s]));
+    this.set(gid, { ...v, seats, token: v.token === oldToken ? token : v.token });
+  },
   useSeat(gid, playerId) {
     const v = this.get(gid);
     const seat = this.seats(gid).find((x) => x.playerId === playerId);
