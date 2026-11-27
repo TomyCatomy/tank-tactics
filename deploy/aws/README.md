@@ -11,9 +11,9 @@ if several pushes wait, only the newest is deployed.
 
 | Action | What it does |
 |---|---|
-| `up` | Creates the server and CloudFront, ships `main`, and prints the URL in the run summary (10-20 min) |
-| `redeploy` | Ships `main` to the running server and keeps game data |
-| `down` | Deletes the server, disk, snapshots, IP, security group and CloudFront. **Deletes all game data**; requires typing `DELETE` |
+| `up` | Creates the server and CloudFront, ships `main`, points the domain at it, and prints the URL in the run summary (10-20 min) |
+| `redeploy` | Ships `main` to the running server, keeps game data, and attaches the domain if it isn't yet |
+| `down` | Deletes the server, disk, snapshots, IP, security group, CloudFront and the domain's DNS records. **Deletes all game data**; requires typing `DELETE` |
 
 ## One-time setup
 
@@ -39,6 +39,39 @@ role trusts only `main` of this repository. It has no IAM write access, can pass
 instance role, can launch only `t4g.small` or `t4g.micro`, and can change or delete only
 EC2 resources tagged `app=tank-tactics`.
 
+## Domain: tanktactics.io
+
+The site is served at **https://tanktactics.io**; `www.tanktactics.io` redirects there
+(301, path and query kept) so every player shares one origin, and with it the seats the
+browser remembers. The `*.cloudfront.net` address keeps working too.
+
+These pieces are permanent and survive `down`:
+
+- **Registration** stays at Spaceship, whose nameservers for the domain are set to the
+  Route 53 zone's four `awsdns` servers.
+- **Route 53 hosted zone** `tanktactics.io` (about $0.50/month), made by hand. It also holds
+  the certificate's two `_….acm-validations.aws` CNAMEs; leave them, or renewal fails.
+- **ACM certificate** for `tanktactics.io` and `www.tanktactics.io` in **us-east-1** (CloudFront
+  only uses certificates from there), DNS-validated and renewed by AWS.
+- **Redirect function** `tank-tactics-www-redirect`, in [`github-access.yaml`](github-access.yaml).
+
+[`domain.sh`](domain.sh) does the per-deployment part: after `up` and every `redeploy` it adds
+the domain and certificate to the distribution (only if they differ) and upserts `A`/`AAAA`
+alias records for both names, then checks the site and the redirect through CloudFront.
+Before `down` it deletes those records. The deploy role may change only those four records.
+If the zone or an issued certificate is missing, it warns and the site stays on its
+`cloudfront.net` address.
+
+To rebuild the permanent pieces, for example on a new domain (also change `DOMAIN` in the
+workflow and the stack's `Domain` parameter):
+
+```bash
+aws route53 create-hosted-zone --profile tank-tactics --name <domain> --caller-reference "$(date +%s)"
+aws acm request-certificate --profile tank-tactics --region us-east-1 --validation-method DNS   --domain-name <domain> --subject-alternative-names <domain> www.<domain>
+# then add the CNAMEs from `aws acm describe-certificate` to the zone, and set the zone's
+# nameservers at the registrar
+```
+
 ## Google sign-in (required)
 
 The deployed server always has Google sign-in on. It reads its OAuth client ID from SSM
@@ -58,7 +91,7 @@ The deployment fails if sign-in can't be turned on:
 
 - Before writing it, the server asks Google whether the client exists (an unknown or
   deleted client gets `invalid_client`). It can't check *Authorized JavaScript origins*,
-  so keep the site's address there by hand.
+  so keep `https://tanktactics.io` there by hand (`www` redirects, so it needs no entry).
 - `redeploy`: if the parameter is missing, malformed, unreadable or not a real client, or
   Google can't be reached, the run fails before the
   restart and the old version keeps running. It also fails if the restarted server's
@@ -108,7 +141,7 @@ background scheduler fires AP ticks, and state goes to a SQLite file. It runs on
 always-on VM with CloudFront in front for HTTPS:
 
 ```
-browser --HTTPS/WSS--> CloudFront (*.cloudfront.net, caching off)
+browser --HTTPS/WSS--> CloudFront (tanktactics.io, caching off)
                          --HTTP :8080--> EC2 (Elastic IP) --> uvicorn --> SQLite on EBS
 ```
 
@@ -121,16 +154,17 @@ browser --HTTPS/WSS--> CloudFront (*.cloudfront.net, caching off)
 | Network | Default VPC. TCP 8080 is open only to the CloudFront origin-facing prefix list |
 | Backups | Daily 03:00 UTC snapshots of volumes tagged `backup=daily`, keep 7 |
 
-Each `up` gets a **new** `*.cloudfront.net` address, so earlier invite and rejoin links stop
-working. With Google sign-in on, add each new address to the OAuth client's *Authorized
-JavaScript origins*.
+Each `up` gets a **new** `*.cloudfront.net` address, but `tanktactics.io` follows it, so links
+on the domain keep working across `down` and `up` (game data does not).
 
 ## Cost
 
 About $15-17/month while up with `t4g.small`: instance ~$12, public IPv4 ~$3.60, disk and
-snapshots ~$1, CloudFront small. After `down`, only the tiny S3 bucket remains, normally empty.
+snapshots ~$1, CloudFront small, Route 53 zone $0.50. After `down`, the Route 53 zone and the
+tiny S3 bucket (normally empty) remain. The certificate is free; the domain is billed by Spaceship.
 
 ## History
 
 - 2026-11-20: deployed by hand, smoke-tested, then taken down. Only a test lobby was lost.
 - 2026-11-23: shell scripts replaced by the GitHub Actions workflow.
+- 2026-11-27: domain `tanktactics.io` added (DNS moved from Spaceship to Route 53).
