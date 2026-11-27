@@ -404,7 +404,7 @@ def invalid_configs_are_rejected(t: T):
         {"nope": 1}, {"board": {"nope": 1}}, {"board": 5}, {"board": {"size": 2}}, {"board": {"size": 201}},
         {"board": {"size": "5"}}, {"board": {"size": 5.0}}, {"board": {"size": True}}, {"start": {"hp": 0}},
         {"start": {"hp": 101}}, {"start": {"ap": -1}}, {"start": {"action_range": 0}}, {"ap": {"rrule": "FREQ=SECONDLY"}},
-        {"ap": {"cap": 0}}, {"actions": {"range_upgrade_cost": 0}}, {"actions": {"max_range": 1}},
+        {"ap": {"cap": 0}}, {"actions": {"range_upgrade_cost": 0}}, {"actions": {"range_upgrade_step": -1}}, {"actions": {"max_range": 1}},
         {"actions": {"allow_give_hp": "yes"}}, {"jury": {"tie_rule": "coin"}}, {"jury": {"enabled": 1}},
         {"fog_of_war": "on"}, {"max_duration_seconds": 0}, {"players": {"minimum": 1}},
         {"players": {"minimum": 5, "maximum": 3}}, {"debug": {"tick_seconds": 0}},
@@ -569,12 +569,19 @@ def give_hp_rules(t: T):
 
 @scenario("actions")
 def upgrade_rules(t: T):
-    a, _ = t.game(2, {"start": {"ap": 7, "action_range": 2}, "actions": {"range_upgrade_cost": 3, "max_range": 4}})
+    a, _ = t.game(2, {"start": {"ap": 9, "action_range": 2}, "actions": {"range_upgrade_cost": 3, "max_range": 4}})
+    t.eq(t.tank(a)["upgrade_cost"], 3, "the first upgrade costs the base cost")
     t.good(t.act(a, "upgrade"), "upgrade")
-    t.eq((t.tank(a)["action_range"], t.tank(a)["ap"]), (3, 4), "upgrade adds range and costs AP")
+    t.eq((t.tank(a)["action_range"], t.tank(a)["ap"], t.tank(a)["upgrade_cost"]), (3, 6, 4),
+         "upgrade adds range, costs AP and makes the next one 1 AP dearer")
     t.good(t.act(a, "upgrade"), "upgrade to max")
+    t.eq(t.tank(a)["ap"], 2, "the second upgrade cost 4 AP")
     t.err(t.act(a, "upgrade"), 400, "max_range", "upgrade past max")
-    t.eq(t.tank(a)["ap"], 1, "rejected upgrade costs nothing")
+    t.eq(t.tank(a)["ap"], 2, "rejected upgrade costs nothing")
+    flat, _ = t.game(2, {"start": {"ap": 6}, "actions": {"range_upgrade_cost": 3, "range_upgrade_step": 0}})
+    t.good(t.act(flat, "upgrade"), "flat upgrade")
+    t.good(t.act(flat, "upgrade"), "flat upgrade again")
+    t.eq(t.tank(flat)["ap"], 0, "with no step every upgrade costs the same")
     b, _ = t.game(2, {"start": {"ap": 2}})
     t.err(t.act(b, "upgrade"), 400, "insufficient_ap", "upgrade without enough AP")
 
@@ -1200,6 +1207,8 @@ FUZZ_CONFIGS = [
     {"ap": {"cap": 7}, "start": {"ap": 7}},
     {"actions": {"loot_on_kill": False, "allow_give_hp": False}},
     {"actions": {"range_upgrade_cost": 1, "max_range": 5}, "start": {"action_range": 2}},
+    {"actions": {"range_upgrade_cost": 1, "range_upgrade_step": 2}, "start": {"ap": 9}},
+    {"actions": {"range_upgrade_step": 0}, "start": {"ap": 6}},
     {"fog_of_war": "alliance", "board": {"size": 5}, "ap": {"cap": 12}, "start": {"ap": 12, "action_range": 3}},
     {"start": {"hp": 1, "ap": 3, "action_range": 1}, "board": {"size": 3}},
 ]
@@ -1246,7 +1255,9 @@ class Model:
             me["x"], me["y"] = to
             return None
         if kind == "upgrade":
-            cost, top = self.cfg["actions"]["range_upgrade_cost"], self.cfg["actions"]["max_range"]
+            acts = self.cfg["actions"]
+            cost = acts["range_upgrade_cost"] + acts["range_upgrade_step"] * (me["action_range"] - self.cfg["start"]["action_range"])
+            top = acts["max_range"]
             if top is not None and me["action_range"] >= top:
                 return "max_range"
             if me["ap"] < cost:

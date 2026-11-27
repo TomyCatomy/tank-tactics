@@ -21,7 +21,7 @@ Modules:
     recurrence  the AP schedule (RRULE) bound to a game's start
     view     per-viewer fog-of-war redaction
 """
-from .actions import MOVE_COST, SHOOT_COST, give_ap, give_hp, move, shoot, upgrade_range
+from .actions import MOVE_COST, SHOOT_COST, give_ap, give_hp, move, range_upgrade_cost, shoot, upgrade_range
 from .board import (
     adjacent, distance, find_player, get_player, in_bounds, in_range, is_juror, living_players, occupant_at, range_distance,
 )
@@ -62,7 +62,7 @@ __all__ = [
     "PLAYER_COLORS", "add_player", "close_lobby", "create_game", "leave_lobby", "place_tanks", "remove_player",
     "set_color", "start_game", "update_config",
     # actions
-    "MOVE_COST", "SHOOT_COST", "give_ap", "give_hp", "move", "shoot", "upgrade_range",
+    "MOVE_COST", "SHOOT_COST", "give_ap", "give_hp", "move", "range_upgrade_cost", "shoot", "upgrade_range",
     # commands
     "Action", "ActionType", "GiveApCommand", "GiveHpCommand", "MoveCommand", "ShootCommand", "UpgradeCommand",
     "parse_action",

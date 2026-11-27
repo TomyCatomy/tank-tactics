@@ -136,7 +136,8 @@ for example `{"jury": {"enabled": true}}`, and are validated through the same mo
 | `ap.rrule` | `"FREQ=DAILY"` | +1 AP to every living tank on each occurrence of this [RFC 5545](https://www.rfc-editor.org/rfc/rfc5545#section-3.3.10) rule body, e.g. `FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR;BYHOUR=9;BYMINUTE=0`. DTSTART is the game start; no `DTSTART`, `COUNT` or `UNTIL`. Ticks are on round minutes, at most once a minute (no `FREQ=SECONDLY`), and at least once in every calendar month (no `FREQ=YEARLY`, no day 29-31; use `BYMONTHDAY=-1` for the last day). The default is daily at the start's hh:mm. |
 | `ap.timezone` | `"UTC"` | IANA zone the rule runs in (DST-aware); the web client defaults new games to the browser's zone |
 | `ap.cap` | `null` | no cap |
-| `actions.range_upgrade_cost` | `3` | |
+| `actions.range_upgrade_cost` | `3` | AP for the first upgrade |
+| `actions.range_upgrade_step` | `1` | extra AP for each further upgrade (3, 4, 5…); `0` = flat |
 | `actions.max_range` | `null` | unlimited |
 | `actions.allow_give_hp` | `true` | |
 | `actions.loot_on_kill` | `false` | killer takes the victim's AP |

@@ -102,7 +102,9 @@ class ApConfig(_Section):
 
 
 class ActionsConfig(_Section):
-    range_upgrade_cost: int = Field(3, ge=1, le=1000, description="AP cost to permanently add 1 range.")
+    range_upgrade_cost: int = Field(3, ge=1, le=1000, description="AP cost of the first range upgrade (+1 range, permanently).")
+    range_upgrade_step: int = Field(
+        1, ge=0, le=1000, description="Extra AP each further upgrade costs (3, 4, 5... by default). 0 = always the same.")
     max_range: int | None = Field(None, ge=1, le=200, description="Range upgrade ceiling. None = unlimited.")
     allow_give_hp: bool = True
     loot_on_kill: bool = Field(False, description="The killer receives all of the victim's AP.")

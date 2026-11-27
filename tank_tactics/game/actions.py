@@ -17,7 +17,7 @@ from .guards import (
     require_positive_int,
 )
 from .outcome import check_game_over, kill_tank, snapshot_ap
-from .state import EventType, GameError, GameState, LogEntry
+from .state import EventType, GameError, GameState, LogEntry, Player
 
 MOVE_COST = 1
 SHOOT_COST = 1
@@ -117,9 +117,17 @@ def give_hp(state: GameState, actor_id: str, target_id: Any, amount: Any, now: f
     ]
 
 
+def range_upgrade_cost(state: GameState, player: Player) -> int:
+    """What `player`'s next range upgrade costs: the base cost, plus the step for every upgrade
+    already bought (range is only ever gained by upgrading, so that count is range - starting range)."""
+    rules = state.config.actions
+    bought = max(0, player.action_range - state.config.start.action_range)
+    return rules.range_upgrade_cost + rules.range_upgrade_step * bought
+
+
 def upgrade_range(state: GameState, actor_id: str, now: float) -> list[LogEntry]:
     actor = require_living_actor(state, actor_id)
-    cost, max_range = state.config.actions.range_upgrade_cost, state.config.actions.max_range
+    cost, max_range = range_upgrade_cost(state, actor), state.config.actions.max_range
     if max_range is not None and actor.action_range >= max_range:
         raise GameError("max_range", f"Your range is already at the maximum ({max_range}).")
     require_ap(actor, cost)
