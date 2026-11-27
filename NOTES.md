@@ -231,3 +231,8 @@ Where the spec left room for interpretation, this is what I chose and why.
     when it is signed in, so a player resetting their own linked seat keeps the link.
     Anyone holding a valid token can reset, as anyone holding one can already play the
     tank: whoever resets first keeps the seat.
+38. **Joining from an invite link with Google skips the name box.** Signed out, the join
+    page offers Google's button as an alternative to typing a name. Signing in there joins
+    at once under the Google profile name (cut to the 24-character limit), or reopens the
+    account's existing seat if it already has one in that game. If the join fails (say the
+    name is taken), the page shows the signed-in form prefilled with that name to change.
