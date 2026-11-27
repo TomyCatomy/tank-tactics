@@ -1,17 +1,26 @@
 """Read-only queries: geometry, tile occupancy and player lookups."""
 from __future__ import annotations
 
+import math
+
 from .state import GameError, GameState, Player
 
 
 def distance(a: tuple[int, int], b: tuple[int, int]) -> int:
-    """Chebyshev distance: diagonal steps count the same as orthogonal ones."""
+    """Chebyshev (step) distance, used for movement and start spacing: diagonal steps
+    count the same as orthogonal ones. Range uses ``range_distance`` instead."""
     return max(abs(a[0] - b[0]), abs(a[1] - b[1]))
 
 
+def range_distance(a: tuple[int, int], b: tuple[int, int]) -> float:
+    """Euclidean (straight-line) distance between tile centres, used for range."""
+    return math.hypot(a[0] - b[0], a[1] - b[1])
+
+
 def in_range(a: Player, b: tuple[int, int]) -> bool:
-    """No line of sight: range is the only constraint."""
-    return distance(a.pos, b) <= a.action_range
+    """No line of sight: straight-line distance is the only constraint (exact, in integers)."""
+    dx, dy = a.pos[0] - b[0], a.pos[1] - b[1]
+    return dx * dx + dy * dy <= a.action_range * a.action_range
 
 
 def in_bounds(state: GameState, p: tuple[int, int]) -> bool:

@@ -59,7 +59,13 @@ def merge(*dicts: dict) -> dict:
 
 
 def dist(a, b) -> int:
+    """Step (Chebyshev) distance: movement."""
     return max(abs(a[0] - b[0]), abs(a[1] - b[1]))
+
+
+def dist2(a, b) -> int:
+    """Squared straight-line distance: range (in range when dist2 <= range ** 2)."""
+    return (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2
 
 
 # -- server ------------------------------------------------------------------------------
@@ -219,20 +225,24 @@ class T:
         v = self.view(seat, srv)
         return next(p for p in v["players"] if p["id"] == (of or seat).id)
 
-    def walk_to_distance(self, mover: Seat, other: Seat, d: int) -> None:
+    def walk_to_distance(self, mover: Seat, other: Seat, d: int, metric: Callable = dist) -> None:
+        """Walk ``mover`` until ``metric(mover, other) == d`` (pass ``dist2`` for squared range distance)."""
         for _ in range(250):
             v = self.view(mover)
             me = next(p for p in v["players"] if p["id"] == mover.id)
             o = next(p for p in v["players"] if p["id"] == other.id)
             a, b = (me["x"], me["y"]), (o["x"], o["y"])
-            if dist(a, b) == d:
+            if metric(a, b) == d:
                 return
+            n = v["game"]["board_size"]
             blocked = {(p["x"], p["y"]) for p in v["players"] if p["alive"]}
+            goals = [(x, y) for x in range(n) for y in range(n) if metric((x, y), b) == d and (x, y) not in blocked]
+            self.must(goals, "walk: no free tile at that distance")
+            goal = min(goals, key=lambda t: dist(t, a))
             options = [(a[0] + dx, a[1] + dy) for dx in (-1, 0, 1) for dy in (-1, 0, 1) if dx or dy]
-            options = [t for t in options if 0 <= t[0] < v["game"]["board_size"] and 0 <= t[1] < v["game"]["board_size"]
-                       and t not in blocked]
+            options = [t for t in options if 0 <= t[0] < n and 0 <= t[1] < n and t not in blocked]
             self.must(options, "walk: tank is boxed in")
-            best = min(options, key=lambda t: abs(dist(t, b) - d))
+            best = min(options, key=lambda t: (dist(t, goal), dist2(t, goal)))
             self.good(self.act(mover, "move", to=list(best)), "walk")
         raise Failed("walk: never reached the wanted distance")
 
@@ -400,7 +410,7 @@ def webhook_is_visible_only_to_host(t: T):
 
 @scenario("config")
 def auto_board_size(t: T):
-    for n, want in ((2, 10), (11, 10), (12, 11)):
+    for n, want in ((2, 12), (16, 12), (17, 13)):
         s = t.game(n)
         t.eq(t.view(s[0])["game"]["board_size"], want, f"auto board size for {n} players")
 
@@ -433,10 +443,11 @@ def move_rules(t: T):
 @scenario("actions")
 def range_boundary_is_exact(t: T):
     a, b = t.game(2, {"board": {"size": 15}, "start": {"action_range": 3, "hp": 9}})
+    # Range is straight-line: (3, 1) away is sqrt(10) > 3, (3, 0) away is exactly 3.
     for what, body in (("shoot", {}), ("give_ap", {"amount": 1}), ("give_hp", {"amount": 1})):
-        t.walk_to_distance(a, b, 4)
-        t.err(t.act(a, what, target_id=b.id, **body), 400, "out_of_range", f"{what} at range+1")
-        t.walk_to_distance(a, b, 3)
+        t.walk_to_distance(a, b, 10, dist2)
+        t.err(t.act(a, what, target_id=b.id, **body), 400, "out_of_range", f"{what} just past range")
+        t.walk_to_distance(a, b, 9, dist2)
         t.good(t.act(a, what, target_id=b.id, **body), f"{what} at exactly range")
 
 
@@ -1163,7 +1174,7 @@ class Model:
         n = a.get("amount", 1)
         if kind != "shoot" and n < 1:
             return "invalid_amount"
-        if dist(here, (tgt["x"], tgt["y"])) > me["action_range"]:
+        if dist2(here, (tgt["x"], tgt["y"])) > me["action_range"] ** 2:
             return "out_of_range"
         if kind == "give_hp":
             if me["hp"] - n < 1:

@@ -22,7 +22,7 @@ def err(code: str):
     assert info.value.code == code, info.value.message
 
 
-# 1. Chebyshev range ---------------------------------------------------------
+# 1. Step distance and straight-line range ------------------------------------
 
 def test_chebyshev_distance():
     assert game.distance((0, 0), (1, 1)) == 1
@@ -30,14 +30,15 @@ def test_chebyshev_distance():
     assert game.distance((5, 5), (2, 7)) == 3
 
 
-def test_diagonal_in_range_and_distance_3_out_of_range():
+def test_range_is_straight_line_distance():
     s = make_active({"a": (0, 0), "b": (1, 1), "c": (3, 0)})
     a = p(s, "a")
-    assert a.action_range == 2
-    assert game.in_range(a, (1, 1))
-    assert game.in_range(a, (2, 2))
-    assert not game.in_range(a, (3, 0))
-    assert not game.in_range(a, (3, 3))
+    assert a.action_range == 3
+    assert game.range_distance((0, 0), (3, 4)) == 5
+    for tile in ((3, 0), (0, 3), (2, 2), (1, 1)):
+        assert game.in_range(a, tile), tile
+    for tile in ((3, 1), (2, 3), (4, 0), (3, 3)):  # within 3 steps, but further than 3 in a line
+        assert not game.in_range(a, tile), tile
 
 
 # 2. Move --------------------------------------------------------------------
@@ -113,9 +114,10 @@ def test_shoot_costs_one_ap_and_deals_one_damage():
 
 
 def test_shoot_rejected_out_of_range():
-    s = make_active({"a": (0, 0), "b": (3, 0)})
-    with err("out_of_range"):
+    s = make_active({"a": (0, 0), "b": (3, 1)})
+    with err("out_of_range") as info:
         game.shoot(s, "a", "b", T0)
+    assert "distance 3.2" in info.value.message
     assert p(s, "a").ap == 1 and p(s, "b").hp == 3
 
 
@@ -401,15 +403,15 @@ def test_jury_catch_up_multiple_cycles():
 # 8. Upgrade range ----------------------------------------------------------------
 
 def test_upgrade_range():
-    s = make_active({"a": (0, 0), "b": (3, 0)})
+    s = make_active({"a": (0, 0), "b": (4, 0)})
     p(s, "a").ap = 4
     game.upgrade_range(s, "a", T0)
-    assert p(s, "a").action_range == 3 and p(s, "a").ap == 1
+    assert p(s, "a").action_range == 4 and p(s, "a").ap == 1
     game.shoot(s, "a", "b", T0)  # now in range
 
 
 def test_upgrade_range_needs_ap_and_respects_cap():
-    s = make_active({"a": (0, 0), "b": (3, 0)}, actions={"range_upgrade_cost": 2, "max_range": 3})
+    s = make_active({"a": (0, 0), "b": (3, 0)}, actions={"range_upgrade_cost": 2, "max_range": 4})
     with err("insufficient_ap"):
         game.upgrade_range(s, "a", T0)
     p(s, "a").ap = 10
@@ -417,7 +419,7 @@ def test_upgrade_range_needs_ap_and_respects_cap():
     assert p(s, "a").ap == 8
     with err("max_range"):
         game.upgrade_range(s, "a", T0)
-    assert p(s, "a").action_range == 3 and p(s, "a").ap == 8
+    assert p(s, "a").action_range == 4 and p(s, "a").ap == 8
 
 
 # 10. Fog of war --------------------------------------------------------------------
@@ -430,7 +432,7 @@ def _fog_scenario(fog: str):
     p(s, "d").ap = 4
     p(s, "c").hp = 1
     game.move(s, "d", [8, 8], T0)
-    p(s, "d").action_range = 3
+    p(s, "d").action_range = 4  # (8, 8) to (6, 5) is sqrt(13) away
     game.shoot(s, "d", "c", T0)  # D kills C and loots
     game.advance_time(s, T0 + DAY, random.Random(0))
     return s
@@ -509,7 +511,7 @@ def test_start_requires_two_players_and_host():
     with err("forbidden"):
         game.start_game(s, "p2", T0, random.Random(0))
     game.start_game(s, "h", T0, random.Random(0))
-    assert s.status == "active" and s.board_size == 10
+    assert s.status == "active" and s.board_size == 12
     with err("not_lobby"):
         game.add_player(s, "p3", "Three", T0)
 
@@ -562,7 +564,7 @@ def test_config_validation():
 
     c = base.with_overrides({"ap": {"cap": None}, "start": {"hp": 5}})
     assert c.start.hp == 5 and c.ap.cap is None
-    assert c.start.ap == 1 and c.start.action_range == 2  # partial override keeps sibling fields
+    assert c.start.ap == 1 and c.start.action_range == 3  # partial override keeps sibling fields
     assert base.start.hp == 3  # immutable: the original is unchanged
 
 
@@ -579,7 +581,7 @@ def test_config_derived_values_and_storage_round_trip():
     c = GameConfig.parse({"debug": {"fast_ticks": True, "tick_seconds": 7}})
     assert c.effective_schedule == ("FREQ=SECONDLY;INTERVAL=7", "UTC")  # AP and jury both follow it
     assert GameConfig().effective_schedule == ("FREQ=DAILY", "UTC")
-    assert GameConfig().board.size_for(20) == 14 and GameConfig().board.size_for(2) == 10
+    assert GameConfig().board.size_for(20) == 14 and GameConfig().board.size_for(2) == 12
     assert GameConfig.parse({"board": {"size": 6}}).board.size_for(20) == 6
     # Old saves load with new defaults filled in and retired keys ignored.
     old = {"start": {"hp": 4, "retired": 1}, "some_retired_section": {}}

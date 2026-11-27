@@ -22,7 +22,9 @@ Modules:
     view     per-viewer fog-of-war redaction
 """
 from .actions import MOVE_COST, SHOOT_COST, give_ap, give_hp, move, shoot, upgrade_range
-from .board import distance, find_player, get_player, in_bounds, in_range, is_juror, living_players, occupant_at
+from .board import (
+    distance, find_player, get_player, in_bounds, in_range, is_juror, living_players, occupant_at, range_distance,
+)
 from .commands import (
     Action,
     ActionType,
@@ -55,7 +57,7 @@ __all__ = [
     # state
     "EventType", "GameError", "GameState", "JuryVote", "LogEntry", "Player", "Visibility",
     # board
-    "distance", "find_player", "get_player", "in_bounds", "in_range", "is_juror", "living_players", "occupant_at",
+    "distance", "find_player", "get_player", "in_bounds", "in_range", "is_juror", "living_players", "occupant_at", "range_distance",
     # lobby
     "PLAYER_COLORS", "add_player", "close_lobby", "create_game", "leave_lobby", "place_tanks", "remove_player",
     "start_game", "update_config",

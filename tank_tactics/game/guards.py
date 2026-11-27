@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .board import distance, find_player, get_player, in_range
+from .board import find_player, get_player, in_range, range_distance
 from .state import GameError, GameState, Player
 
 
@@ -55,7 +55,7 @@ def require_in_range(actor: Player, target: Player) -> None:
     if not in_range(actor, target.pos):
         raise GameError(
             "out_of_range",
-            f"Target is out of range (distance {distance(actor.pos, target.pos)}, your range {actor.action_range}).",
+            f"Target is out of range (distance {range_distance(actor.pos, target.pos):.1f}, your range {actor.action_range}).",
         )
 
 

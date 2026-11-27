@@ -80,10 +80,13 @@ export function renderBoard() {
 
   // Range highlight of the selected tank; move targets for my own tank.
   if (sel?.alive) {
+    // Range is straight-line distance, so the reach is a disc of tiles: one strip per row.
     const r = sel.action_range, mine = sel.id === my?.id;
-    const x0 = Math.max(0, sel.x - r), x1 = Math.min(N - 1, sel.x + r);
-    const y0 = Math.max(0, sel.y - r), y1 = Math.min(N - 1, sel.y + r);
-    hl.append(sv('rect', { class: mine ? 'range' : 'range other', x: x0, y: y0, width: x1 - x0 + 1, height: y1 - y0 + 1, rx: 0.1 }));
+    for (let y = Math.max(0, sel.y - r); y <= Math.min(N - 1, sel.y + r); y++) {
+      const reach = Math.floor(Math.sqrt(r * r - (y - sel.y) ** 2));
+      const x0 = Math.max(0, sel.x - reach), x1 = Math.min(N - 1, sel.x + reach);
+      hl.append(sv('rect', { class: mine ? 'range' : 'range other', x: x0, y, width: x1 - x0 + 1, height: 1 }));
+    }
     if (mine && st.game.status === 'active') {
       for (const { x, y } of freeNeighbours(sel, players, N, config)) {
         hl.append(sv('rect', { class: 'move-target', x: x + 0.12, y: y + 0.12, width: 0.76, height: 0.76, rx: 0.12 }));
