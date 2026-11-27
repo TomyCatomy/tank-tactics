@@ -201,7 +201,7 @@ All state-changing requests use `Authorization: Bearer <player token>`.
 | `POST /api/games/{id}/reset-link` | | replaces your seat token: every older copy (rejoin links, other devices, claimed tokens) stops working and its connections close; unlinks the seat from its account. Returns the new credentials |
 | `WS /ws/{id}` | first message `{type: auth, token}` | pushes `{type: state, state}` on every change |
 | `GET /api/auth/config` | | `{google_client_id, discord_connect}`; `null` / `false` when off |
-| `POST /api/games/{id}/discord/connect` | `{origin}` | host, lobby only; returns `{url}`, Discord's page to pick a channel. Discord sends the host back to `GET /api/discord/callback`, which saves the webhook |
+| `POST /api/games/{id}/discord/connect` | `{origin}` | host, lobby only; returns `{url}`, Discord's page to pick a channel. Also sets an HttpOnly cookie that binds the attempt to this browser. Discord sends the host back to `GET /api/discord/callback`, which checks the cookie and saves the webhook |
 | `POST /api/auth/google` | `{credential}` | Google ID token in, `{token, user}` session out |
 | `POST /api/auth/logout` | | session; ends it (saved seat tokens keep working) |
 | `GET /api/me` · `GET /api/me/games` | | session; your account and your linked seats |
