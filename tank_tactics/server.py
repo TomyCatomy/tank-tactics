@@ -9,6 +9,7 @@ import logging
 
 import uvicorn
 
+from . import telemetry
 from .api import create_app
 from .config import ServerConfig
 from .service import GameService
@@ -22,7 +23,14 @@ def main() -> None:
     cfg = ServerConfig()  # reads PORT, DB_PATH, ... from the environment
     service = GameService(Store(cfg.db_path), cfg)
     log.info("loaded %d live game(s) from %s", len(service.games), cfg.db_path)
-    uvicorn.run(create_app(service), host=cfg.host, port=cfg.port, log_level="info")
+    app = create_app(service)
+    tel = telemetry.setup(app)  # off unless OTEL_EXPORTER_OTLP_ENDPOINT is set
+    log.info("telemetry export: %s", "on" if tel else "off")
+    try:
+        uvicorn.run(app, host=cfg.host, port=cfg.port, log_level="info")
+    finally:
+        if tel:
+            tel.shutdown()
 
 
 if __name__ == "__main__":

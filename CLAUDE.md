@@ -25,6 +25,8 @@ python -m venv .venv && .venv/Scripts/python -m pip install -r requirements-dev.
 
 Server settings come from environment variables read by `ServerConfig` (pydantic-settings): `PORT`, `DB_PATH` (default `data/tank-tactics.db`), `HOST`, rate limits, etc. For quick manual play, run with `ALLOW_DEBUG=true` and create a game with `debug.fast_ticks` on so AP arrives every few seconds instead of on the schedule (every 24 h by default). `ALLOW_DEBUG` defaults to off, which hides the `debug.*` options and makes the API reject them; `make_service` turns it on for tests.
 
+Telemetry (`tank_tactics/telemetry.py`, set up in `server.py`) exports traces, metrics and logs over OTLP/HTTP when `OTEL_EXPORTER_OTLP_ENDPOINT` is set (plus `OTEL_EXPORTER_OTLP_HEADERS` for auth; the other standard `OTEL_*` variables apply) and is off otherwise. Production sends it to Grafana Cloud; see deploy/aws/README.md. It must never record request or response bodies or headers, which carry tokens, names and chat text.
+
 The frontend (`public/`) is plain JS with no build step and is served by the API. Third-party scripts are vendored as release files in `public/vendor/` (currently rrule.js, used by the lobby's schedule editor to parse and write rules). There is no JS tooling in the repo; the client is tested through the browser tests below. The client is native ES modules under `public/js/` (entry `js/main.js`, loaded with `type="module"` after the classic rrule.js script): `dom.js`, `api.js`, `storage.js` and `format.js` are shared helpers, `pages/` holds home and join, and `game/` the game page, whose state lives in `game/session.js` as the live-bound `G`. Modules import each other's render functions directly; the import cycles are fine because nothing runs at import time except `main.js`. Build DOM with `h()` / `fill()` from `dom.js`; never pass possibly-`null` children to `replaceChildren()`, which renders them as the text "null".
 
 ## Architecture
@@ -36,7 +38,7 @@ Layers, from the inside out. Each layer only depends on the ones above it:
 2. **`tank_tactics/game/`**: pure rules engine with no I/O, clock or global randomness. Callers pass `now` (epoch seconds) and a `random.Random`. Public API is re-exported from `game/__init__.py`, and callers use `from tank_tactics import game` then `game.move(...)`.
 3. **`tank_tactics/store.py`**: SQLAlchemy 2.0 ORM over SQLite, which converts between rows and the `game` dataclasses.
 4. **`tank_tactics/service.py`**: `GameService` keeps live (lobby/active) games in memory, reads finished/closed ones from the DB on demand through a small LRU cache (`archive_cache_size`; use `service.get(id)`, not `service.games`, for any game), and is the only place state changes are committed.
-5. **`tank_tactics/api/`**: FastAPI app (`create_app`), with routers in `api/routes/` (one module per area), the WebSocket `Hub`, the tick scheduler and Discord notifications. `server.py` only runs uvicorn.
+5. **`tank_tactics/api/`**: FastAPI app (`create_app`), with routers in `api/routes/` (one module per area), the WebSocket `Hub`, the tick scheduler and Discord notifications. `server.py` sets up telemetry (`tank_tactics/telemetry.py`) and runs uvicorn.
 
 ### Invariants that span several files
 
