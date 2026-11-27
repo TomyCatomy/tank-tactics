@@ -210,7 +210,7 @@ jobs:
           status=$(aws ssm get-command-invocation --command-id "$command" --instance-id "$instance" \
             --query Status --output text)
           aws ssm get-command-invocation --command-id "$command" --instance-id "$instance" \
-            --query StandardOutputContent --output text | grep '^Google sign-in:' || true
+            --query StandardOutputContent --output text | grep -E '^(Google sign-in|Telemetry export):' || true
           aws ssm get-command-invocation --command-id "$command" --instance-id "$instance" \
             --query StandardErrorContent --output text | tail -n 20
           if [ "$status" != Success ]; then

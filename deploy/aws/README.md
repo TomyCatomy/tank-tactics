@@ -85,8 +85,8 @@ tokens, names or chat text). It is off unless both parameters below exist.
      --name /tank-tactics/otel-headers --value '<OTEL_EXPORTER_OTLP_HEADERS>'
    ```
 
-3. Run `redeploy` (or `up`). The run log says `Telemetry export: <endpoint>`; the token is
-   never printed.
+3. Run `redeploy` (or `up`, which reads them at first boot). A `redeploy` log says
+   `Telemetry export: <endpoint>` (or `off`); the token is never printed.
 
 [`fetch-config.sh`](fetch-config.sh) writes them to `/etc/tank-tactics.env`, which is now
 readable by root only (systemd reads it before dropping to the service user). The instance
