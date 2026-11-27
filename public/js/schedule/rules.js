@@ -83,6 +83,7 @@ export function modelToRule(m) {
 /** Which preset (if any) shows this rule: a key of the editor's preset list, or 'rule' for none. */
 export function presetOf(options, model) {
   if (options && Object.keys(options).length === 1 && options.freq === RRule.DAILY) return 'start';
+  if (options && Object.keys(options).length === 1 && options.freq === RRule.MINUTELY) return 'minute';
   if (!model) return 'rule';
   if (model.unit === 'hour') return 'hours';
   if (model.every !== 1) return 'custom';

@@ -142,7 +142,7 @@ export function scheduleEditor(ap, { editable = true, debug = null } = {}) {
     if (c.isLastDay || st.preset === 'monthlastday') opts.push(['monthlastday', 'Monthly on the last day']);
     if (c.nth <= 4) opts.push(['monthnth', `Monthly, ${ORD_SHORT[c.nth]} ${wd}`]);
     if (c.isLast || st.preset === 'monthlast') opts.push(['monthlast', `Monthly, last ${wd}`]);
-    opts.push(['hours', 'Every few hours'], ['custom', 'Custom…']);
+    opts.push(['hours', 'Every few hours'], ['minute', 'Every minute'], ['custom', 'Custom…']);
     if (st.preset === 'rule') opts.push(['rule', 'Custom rule']);
     return opts;
   }
@@ -247,6 +247,7 @@ export function scheduleEditor(ap, { editable = true, debug = null } = {}) {
   presetSel.addEventListener('change', () => {
     const id = presetSel.value;
     if (id === 'start') return setRule('FREQ=DAILY');
+    if (id === 'minute') return setRule('FREQ=MINUTELY');
     if (id === 'rule') return; // keep the custom rule as it is
     if (id === 'custom') {
       // Open the builder on the current rule if it fits, else on "weekly on today's weekday".

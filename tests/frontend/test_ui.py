@@ -683,6 +683,10 @@ def test_schedule_preset_sets_the_rule_and_summarises_it(server, page):
     wait_summary(page, "Every 6 hours at minute 00")
     assert raw_rule(page) == "FREQ=HOURLY;INTERVAL=6;BYMINUTE=0"
 
+    preset.select_option("minute")
+    wait_summary(page, "Every minute")
+    assert raw_rule(page) == "FREQ=MINUTELY"
+
     # Created games get exactly the rule and zone on screen.
     preset.select_option("weekdays")
     wait_summary(page, "Every weekday")
