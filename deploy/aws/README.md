@@ -58,9 +58,43 @@ These pieces are permanent and survive `down`:
 [`domain.sh`](domain.sh) does the per-deployment part: after `up` and every `redeploy` it adds
 the domain and certificate to the distribution (only if they differ) and upserts `A`/`AAAA`
 alias records for both names, then checks the site and the redirect through CloudFront.
-Before `down` it deletes those records. The deploy role may change only those four records.
-If the zone or an issued certificate is missing, it warns and the site stays on its
-`cloudfront.net` address.
+It also keeps `origin.tanktactics.io` pointing at the server's Elastic IP (see below).
+Before `down` it deletes those records. The deploy role may change only those records.
+The zone is required. If the ACM certificate isn't issued yet, it warns and the site stays
+on its `cloudfront.net` address.
+
+## HTTPS from CloudFront to the server
+
+CloudFront reaches the server at **`https://origin.tanktactics.io:8443`**, never over plain
+HTTP, so seat tokens, sign-ins and chat are encrypted on that hop too. CloudFront checks the
+certificate against that name.
+
+- The server gets a free **Let's Encrypt** certificate itself ([`tls.sh`](tls.sh), installed
+  as `/usr/local/bin/tank-tactics-tls`). Let's Encrypt checks the name through a DNS TXT
+  record (`_acme-challenge.origin.tanktactics.io`) that certbot writes in Route 53 with the
+  instance role, which may write only that record. No port is open to the internet.
+- `tls.sh issue` runs on first boot and before every redeploy's restart. It keeps a valid
+  certificate and only gets a new one when it is due. A systemd timer
+  (`tank-tactics-tls-renew.timer`) renews it; the renewal hook copies the files to
+  `/var/lib/tank-tactics/tls/` and restarts the app (a second or two of downtime about every
+  60 days).
+- uvicorn serves HTTPS on 8443 (`SSL_CERTFILE` / `SSL_KEYFILE`, set by a systemd drop-in that
+  `tls.sh` writes). The security group opens only 8443, and only to CloudFront's
+  origin-facing prefix list.
+- A redeploy moves a server from before this change over: it opens 8443, points the origin
+  name at the Elastic IP, gets the certificate, restarts the app on HTTPS, switches the
+  distribution's origin to `https-only`, then closes 8080. The site is down for the few
+  minutes CloudFront takes to deploy the new origin.
+
+**Before the first deploy with this change, update the foundation stack** so the instance role
+may write the challenge record and the deploy role may manage `origin.` and close 8080:
+
+```bash
+aws cloudformation deploy --profile tank-tactics --region eu-north-1   --stack-name tank-tactics-github --template-file deploy/aws/github-access.yaml   --capabilities CAPABILITY_NAMED_IAM
+```
+
+On the server, `sudo journalctl -u tank-tactics-tls-renew` shows renewals and
+`sudo /opt/certbot/bin/certbot certificates` the current certificate.
 
 To rebuild the permanent pieces, for example on a new domain (also change `DOMAIN` in the
 workflow and the stack's `Domain` parameter):
@@ -195,7 +229,7 @@ always-on VM with CloudFront in front for HTTPS:
 
 ```
 browser --HTTPS/WSS--> CloudFront (tanktactics.io, caching off)
-                         --HTTP :8080--> EC2 (Elastic IP) --> uvicorn --> SQLite on EBS
+                         --HTTPS :8443 (origin.tanktactics.io)--> EC2 (Elastic IP) --> uvicorn --> Neon or SQLite
 ```
 
 | Piece | Details |
@@ -204,7 +238,7 @@ browser --HTTPS/WSS--> CloudFront (tanktactics.io, caching off)
 | Instance | Amazon Linux 2023 (arm64), CPU credits `standard`, IMDSv2 required, 10 GB encrypted gp3 |
 | Boot | [`userdata.sh`](userdata.sh): settings from SSM, Python venv, `/usr/local/bin/tank-tactics-deploy`, systemd unit `tank-tactics`, database at `/var/lib/tank-tactics/tank-tactics.db`, or in Neon Postgres when the `/tank-tactics/database-url*` parameters exist |
 | Access | No SSH or key pair; commands go through AWS Systems Manager |
-| Network | Default VPC. TCP 8080 is open only to the CloudFront origin-facing prefix list |
+| Network | Default VPC. TCP 8443 (HTTPS) is open only to the CloudFront origin-facing prefix list |
 | Backups | Daily 03:00 UTC snapshots of volumes tagged `backup=daily`, keep 7 |
 
 Each `up` gets a **new** `*.cloudfront.net` address, but `tanktactics.io` follows it, so links

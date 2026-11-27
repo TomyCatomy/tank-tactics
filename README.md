@@ -84,6 +84,7 @@ is validated on startup.
 |---|---|---|
 | `HOST` | `0.0.0.0` | Bind address |
 | `PORT` | `8080` | HTTP port |
+| `SSL_CERTFILE`, `SSL_KEYFILE` | unset | TLS certificate chain and key (PEM); with both set the server speaks HTTPS only. The AWS deployment sets them (see deploy/aws/README.md) |
 | `DB_PATH` | `data/tank-tactics.db` | SQLite file (created on first run) |
 | `ALLOW_DEBUG` | `false` | Let hosts use the `debug.*` game options. Off hides them and the API rejects them; games that already use them keep them |
 | `ACTION_RATE_PER_SECOND` | `5` | Per-player action rate limit |
