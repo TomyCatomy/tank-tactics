@@ -87,7 +87,8 @@ Positions, HP, range, shots, moves, kills, range upgrades and the winner are alw
 
 The host can also change the board size, starting stats, the AP schedule, the
 upgrade cost, an AP cap or a maximum range, and whether destroyed tanks leave wrecks that
-block their tile. The host can also turn off giving HP or the jury, turn on looting, and set a time limit.
+block their tile. The host can also turn off giving HP or the jury, turn on looting, and set a time limit
+in days.
 The time limit ends the game on the next whole minute after it runs out, and no
 AP arrives at that moment. When it is reached, the living tank with the most HP wins. Ties go to the most
 AP, then the highest range. If still tied, the win is shared.

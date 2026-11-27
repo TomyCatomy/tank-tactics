@@ -1,10 +1,11 @@
-"""Number fields: the lobby defaults, and that no field can hold a negative."""
+"""Number fields: the lobby defaults, the time limit in days, and that no field takes a negative."""
 from __future__ import annotations
 
 import httpx
 
 from .test_ui import create_game, open_as, open_create_form
 
+DAY = 86_400
 NUMBER_INPUTS = "input[type=number]"
 
 
@@ -43,6 +44,26 @@ def test_no_settings_field_can_hold_a_negative(server, page):
         e.value = '-3'; e.dispatchEvent(new Event('input', { bubbles: true })); return e.value; })""")
     assert values and all(v == "3" for v in values), values
     assert not any(v.startswith("-") for v in number_values(page))
+
+
+def test_time_limit_is_entered_in_days(server, page):
+    open_settings(page, server)
+    limit = page.get_by_label("Time limit (days)")
+    assert limit.input_value() == "" and limit.get_attribute("placeholder") == "None"
+    limit.fill("3")
+    page.fill("input[placeholder='Your display name']", "Host")
+    page.click("button:has-text('Create game')")
+    page.wait_for_selector("text=Game settings")
+    gid = page.evaluate("location.hash").split("/")[2].split("?")[0]
+    assert server.service.get(gid).config.max_duration_seconds == 3 * DAY
+    page.locator("details.adv summary").first.click()
+    assert page.get_by_label("Time limit (days)").input_value() == "3"  # and it reads back in days
+
+
+def test_board_multiplier_is_not_a_lobby_setting(server, page):
+    open_settings(page, server)
+    assert page.get_by_label("Auto board: minimum size").is_visible()
+    assert "multiplier" not in page.locator("#app").inner_text()
 
 
 def test_gift_amounts_cannot_be_negative(server, page):

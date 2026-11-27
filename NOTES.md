@@ -46,6 +46,9 @@ Where the spec left room for interpretation, this is what I chose and why.
 10b. **Defaults that differ from the spec** (the owner's call). New games start every tank
     with **0 AP**, looting is **off** and the jury is **on**. The host can change all three
     in the lobby.
+10c. **The lobby form shows the time limit in whole days.** The config and API keep
+    `max_duration_seconds`, so stored games and API clients are unchanged. The form also
+    leaves out `board.size_multiplier`; it keeps its default unless set through the API.
 
 ## Fog of war
 
