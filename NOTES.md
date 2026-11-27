@@ -218,5 +218,8 @@ Where the spec left room for interpretation, this is what I chose and why.
 24. **`Referrer-Policy` is `strict-origin-when-cross-origin`** (was `no-referrer`), because
     Google's sign-in button needs the page origin. Only the origin is sent cross-origin,
     and rejoin tokens are in the URL fragment, which is never sent.
-25. **Schema upgrade:** `create_all` adds the new tables, and `store._migrate` adds
-    `players.user_id` to databases from before accounts.
+25. **Schema upgrade:** `create_all` adds the new tables. A hand-written step that added
+    `players.user_id` to databases from before accounts ran on every boot until the
+    move to Postgres; it was then removed as no longer needed (the deployed database was
+    upgraded by it long before), so there are no schema upgrades. The one-seat-per-account
+    unique index (`players_game_user`) is declared on the model instead.

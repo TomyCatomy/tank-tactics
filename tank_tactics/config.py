@@ -265,6 +265,12 @@ class ServerConfig(BaseSettings):
     host: str = "0.0.0.0"
     port: int = Field(8080, ge=1, le=65535)
     db_path: str = "data/tank-tactics.db"
+    database_url: str | None = Field(
+        None, description="Postgres URL (Neon's pooled one). Set = use Postgres instead of the SQLite file at DB_PATH."
+    )
+    database_url_unpooled: str | None = Field(
+        None, description="Direct (unpooled) Postgres URL, used for creating and upgrading tables."
+    )
     allow_debug: bool = Field(
         False, description="Let hosts turn on the debug.* game options. Off hides them and rejects them in the API."
     )
