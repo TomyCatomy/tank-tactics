@@ -507,7 +507,7 @@ def upgrade_rules(t: T):
 
 @scenario("actions")
 def ap_cap_applies_to_every_gain(t: T):
-    a, b, c = t.game(3, {"start": {"ap": 5, "hp": 1}, "ap": {"cap": 6}})
+    a, b, c = t.game(3, {"start": {"ap": 5, "hp": 1}, "ap": {"cap": 6}, "actions": {"loot_on_kill": True}})
     t.good(t.act(a, "give_ap", target_id=b.id, amount=3), "gift into the cap")
     t.eq((t.tank(a)["ap"], t.tank(b)["ap"]), (2, 6), "giver pays in full and excess is lost")
     t.eq(t.view(b)["log"][-1]["details"].get("received"), 1, "gift log records what arrived")
@@ -519,7 +519,7 @@ def ap_cap_applies_to_every_gain(t: T):
 
 @scenario("endgame")
 def kill_loots_and_dead_cannot_act(t: T):
-    a, b, c = t.game(3, {"start": {"hp": 1, "ap": 4}})
+    a, b, c = t.game(3, {"start": {"hp": 1, "ap": 4}, "actions": {"loot_on_kill": True}})
     t.good(t.act(a, "shoot", target_id=b.id), "kill")
     dead = t.tank(a, b)
     t.eq((dead["alive"], dead["hp"], dead["ap"] if "ap" in dead else None), (False, 0, 0), "dead tank state")
@@ -731,7 +731,7 @@ def finished_game_readable_after_restart(t: T):
 
 @scenario("fog")
 def alliance_fog_hides_what_it_should(t: T):
-    a, b, c, d = t.game(4, {"fog_of_war": "alliance", "start": {"ap": 5, "hp": 2}})
+    a, b, c, d = t.game(4, {"fog_of_war": "alliance", "start": {"ap": 5, "hp": 2}, "actions": {"loot_on_kill": True}})
     t.good(t.act(a, "give_ap", target_id=b.id, amount=1), "secret AP gift")
     t.good(t.act(a, "give_hp", target_id=b.id, amount=1), "secret HP gift")
     t.good(t.act(c, "shoot", target_id=d.id), "shot")
@@ -771,7 +771,7 @@ def fog_stays_on_after_game_over(t: T):
 
 @scenario("fog")
 def fog_off_shows_everything(t: T):
-    a, b, c = t.game(3, {"start": {"hp": 1, "ap": 5}})
+    a, b, c = t.game(3, {"start": {"hp": 1, "ap": 5}, "actions": {"loot_on_kill": True}})
     t.good(t.act(a, "give_ap", target_id=b.id, amount=2), "gift")
     t.good(t.act(a, "shoot", target_id=c.id), "kill")
     v = t.view(c)
@@ -807,7 +807,7 @@ def awards(t: T, seat: Seat) -> list[dict]:
 
 @scenario("jury")
 def jury_permissions(t: T):
-    off = t.game(3, {"start": {"hp": 1}})
+    off = t.game(3, {"start": {"hp": 1}, "jury": {"enabled": False}})
     t.good(t.act(off[0], "shoot", target_id=off[2].id), "kill")
     t.err(t.post(off[2], "vote", {"candidate_id": off[0].id}), 400, "disabled", "vote with jury off")
     a, b, c, d = t.game(4, {"jury": {"enabled": True}, "start": {"hp": 1, "ap": 5}})  # monthly cycles (QUIET)
@@ -1577,7 +1577,7 @@ def rules_modal_from_the_top_bar(t: T):
             pg.locator("#rules-open").click()
             text = " ".join(body.inner_text().split())
             cfg = t.view(host)["game"]["config"]
-            t.ok(f"start with {cfg['start']['hp']} HP, {cfg['start']['ap']} AP (action point) and range "
+            t.ok(f"start with {cfg['start']['hp']} HP, {cfg['start']['ap']} AP (action points) and range "
                  f"{cfg['start']['action_range']}" in text, "rules disagree with the default starting stats")
             t.eq((cfg["ap"]["rrule"], cfg["ap"]["timezone"]), ("FREQ=DAILY", "UTC"),
                  "rules say AP arrives every 24 hours (FREQ=DAILY from the start)")
