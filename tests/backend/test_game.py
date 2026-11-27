@@ -564,7 +564,7 @@ def test_config_validation():
 
     c = base.with_overrides({"ap": {"cap": None}, "start": {"hp": 5}})
     assert c.start.hp == 5 and c.ap.cap is None
-    assert c.start.ap == 1 and c.start.action_range == 3  # partial override keeps sibling fields
+    assert c.start.ap == 0 and c.start.action_range == 3  # partial override keeps sibling fields
     assert base.start.hp == 3  # immutable: the original is unchanged
 
 

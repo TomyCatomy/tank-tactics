@@ -17,6 +17,19 @@ from tank_tactics.store import Store
 T0 = 999_960.0  # a round minute: scheduled events (AP ticks, the time limit) fall on whole minutes
 DAY = 86_400
 
+# The rules tests were written against these settings, which used to be the defaults. Pinning
+# them keeps each test's AP arithmetic independent of the lobby defaults; the defaults
+# themselves are checked in test_game.py::test_new_game_defaults.
+BASE_RULES: dict[str, Any] = {"start": {"ap": 1}, "actions": {"loot_on_kill": True}, "jury": {"enabled": False}}
+
+
+def with_base_rules(config: dict[str, Any] | None) -> dict[str, Any]:
+    """``config`` layered over BASE_RULES (one level deep: sections are merged)."""
+    out = {k: dict(v) for k, v in BASE_RULES.items()}
+    for k, v in (config or {}).items():
+        out[k] = {**out[k], **v} if isinstance(v, dict) and k in out else v
+    return out
+
 
 # -- pure rules engine ----------------------------------------------------------------
 
@@ -28,9 +41,10 @@ def make_active(
 ) -> game.GameState:
     """An active game with tanks at fixed positions. The first id is the host.
 
-    Config sections are keyword arguments: ``make_active(pos, jury={"enabled": True})``.
+    Config sections are keyword arguments, layered over BASE_RULES:
+    ``make_active(pos, jury={"enabled": True})``.
     """
-    cfg = GameConfig.parse(config)
+    cfg = GameConfig.parse(with_base_rules(config))
     ids = list(positions)
     state = game.create_game("game1", ids[0], ids[0].upper(), cfg, now)
     for pid in ids[1:]:
@@ -67,8 +81,8 @@ def make_service(path: str = ":memory:", clock: Clock | None = None, **server_cf
 
 
 def setup_game(svc: GameService, names=("Ann", "Bob", "Cat"), config=None):
-    """Create, join and start a game. Returns (game_id, player_ids, credentials)."""
-    host = svc.create_game(names[0], config)
+    """Create, join and start a game (on BASE_RULES). Returns (game_id, player_ids, credentials)."""
+    host = svc.create_game(names[0], with_base_rules(config))
     gid = host["game_id"]
     players = [host] + [svc.join_game(gid, n) for n in names[1:]]
     svc.start_game(gid, host["player_id"])

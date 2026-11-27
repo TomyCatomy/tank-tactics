@@ -9,7 +9,7 @@
 // shown there; anything else shows as "Custom rule" and is never rewritten unless the host
 // changes it. The server validates and summarises rules (POST /api/schedule/preview).
 import { api, serverDefaults } from '../api.js';
-import { fill, h } from '../dom.js';
+import { fill, h, wholeNumberInput } from '../dom.js';
 import { dayOrdinal, pad2 } from '../format.js';
 import {
   MAX_EVERY, ORDINAL, ORD_SHORT, WD_CHIP, WD_LONG, WEEKDAYS, WORKWEEK,
@@ -65,7 +65,7 @@ export function scheduleEditor(ap, { editable = true, debug = null } = {}) {
   };
   const uid = `sched-${Math.random().toString(36).slice(2, 8)}`;
   const dis = !editable;
-  const num = (attrs) => h('input', { type: 'number', inputmode: 'numeric', disabled: dis, ...attrs });
+  const num = (attrs) => wholeNumberInput({ disabled: dis, ...attrs });
 
   // ----- Layer 1: presets + time of day
   const presetSel = h('select', { id: `${uid}-preset`, disabled: dis, 'aria-describedby': `${uid}-summary` });

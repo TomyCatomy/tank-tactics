@@ -29,6 +29,21 @@ export const sv = (tag, attrs, ...kids) => build(document.createElementNS(SVGNS,
 /** Like el.replaceChildren(), but skips null/false (replaceChildren would render them as text). */
 export const fill = (el, ...kids) => { el.replaceChildren(); return build(el, {}, kids); };
 
+/**
+ * A whole-number <input type=number> that never holds a negative: '-', '+', 'e' and '.' can't be
+ * typed, and a pasted or autofilled value is turned into a whole, non-negative number.
+ */
+export function wholeNumberInput(attrs) {
+  const input = h('input', { type: 'number', inputmode: 'numeric', min: 0, step: 1, ...attrs });
+  input.addEventListener('keydown', (e) => { if (['-', '+', 'e', 'E', '.', ','].includes(e.key)) e.preventDefault(); });
+  input.addEventListener('input', () => {
+    if (input.value === '' || /^\d+$/.test(input.value)) return;
+    const n = Math.trunc(Math.abs(Number(input.value)));
+    input.value = Number.isFinite(n) ? String(n) : '';
+  });
+  return input;
+}
+
 /** A colour dot for a player. */
 export const dot = (color) => h('span', { class: 'dot', style: { background: color } });
 

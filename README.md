@@ -125,21 +125,21 @@ for example `{"jury": {"enabled": true}}`, and are validated through the same mo
 | Key | Default | |
 |---|---|---|
 | `board.size` | `null` (auto) | auto = `max(board.min_size, ceil(sqrt(players) × board.size_multiplier))` |
-| `board.min_size` / `board.size_multiplier` | `12` / `3` | |
+| `board.min_size` / `board.size_multiplier` | `12` / `3` | the multiplier is API-only (not in the lobby form) |
 | `board.wreckage_blocks_tile` | `false` | |
-| `start.hp` / `start.ap` / `start.action_range` | `3` / `1` / `3` | every tank's starting stats |
+| `start.hp` / `start.ap` / `start.action_range` | `3` / `0` / `3` | every tank's starting stats |
 | `ap.rrule` | `"FREQ=DAILY"` | +1 AP to every living tank on each occurrence of this [RFC 5545](https://www.rfc-editor.org/rfc/rfc5545#section-3.3.10) rule body, e.g. `FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR;BYHOUR=9;BYMINUTE=0`. DTSTART is the game start; no `DTSTART`, `COUNT` or `UNTIL`. Ticks are on round minutes, at most once a minute (no `FREQ=SECONDLY`), and at least once in every calendar month (no `FREQ=YEARLY`, no day 29-31; use `BYMONTHDAY=-1` for the last day). The default is daily at the start's hh:mm. |
 | `ap.timezone` | `"UTC"` | IANA zone the rule runs in (DST-aware); the web client defaults new games to the browser's zone |
 | `ap.cap` | `null` | no cap |
 | `actions.range_upgrade_cost` | `3` | |
 | `actions.max_range` | `null` | unlimited |
 | `actions.allow_give_hp` | `true` | |
-| `actions.loot_on_kill` | `true` | killer takes the victim's AP |
-| `jury.enabled` | `false` | a cycle closes on each AP occurrence, right after its tick |
+| `actions.loot_on_kill` | `false` | killer takes the victim's AP |
+| `jury.enabled` | `true` | a cycle closes on each AP occurrence, right after its tick |
 | `jury.tie_rule` | `"all"` | or `"random"` |
 | `jury.votes_public` | `true` | |
 | `fog_of_war` | `"off"` | or `"alliance"` |
-| `max_duration_seconds` | `null` | optional time limit; the game ends on the next round minute after it |
+| `max_duration_seconds` | `null` | optional time limit; the game ends on the next round minute after it. The lobby form edits it in days |
 | `players.minimum` / `players.maximum` | `2` / `64` | a game never starts with < 2 |
 | `debug.fast_ticks` / `debug.tick_seconds` | `false` / `10` | testing aid (needs `ALLOW_DEBUG=true`): replaces the schedule with `FREQ=SECONDLY;INTERVAL=tick_seconds` (UTC) for AP and jury |
 | `notifications.discord_webhook_url` | `null` | posts public events only |

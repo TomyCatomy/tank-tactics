@@ -1,9 +1,12 @@
 // The game settings form (create form and lobby settings).
-import { fill, h } from './dom.js';
+import { fill, h, wholeNumberInput } from './dom.js';
 import { scheduleEditor } from './schedule/editor.js';
 
+const DAY = 86_400;
+
 // `k` is a dotted path into the nested server config (e.g. 'jury.enabled'). `main` fields show
-// up front, the rest under "Advanced rules"; `wide` ones span a whole row of the grid.
+// up front, the rest under "Advanced rules"; `wide` ones span a whole row of the grid. An int
+// field with `scale` is shown in bigger units: the server value is the shown value × scale.
 const FIELDS = [
   { k: 'fog_of_war', label: 'Fog of war', type: 'select', main: true, wide: true,
     options: [['off', 'Off: everything public'], ['alliance', 'Alliance: hide AP counts & gifts']] },
@@ -13,21 +16,20 @@ const FIELDS = [
   { k: 'debug.fast_ticks', label: 'Debug: fast ticks (for testing)', type: 'bool', main: true },
   { k: 'debug.local_seats', label: 'Debug: play several players from one page', type: 'bool', main: true },
   { k: 'debug.tick_seconds', label: 'Debug tick length (seconds)', type: 'int' },
-  { k: 'board.size', label: 'Board size', type: 'int', nullable: true, hint: 'Blank = auto from player count' },
+  { k: 'board.size', label: 'Board size', type: 'int', nullable: true, hint: 'Auto from player count' },
   { k: 'board.min_size', label: 'Auto board: minimum size', type: 'int' },
-  { k: 'board.size_multiplier', label: 'Auto board: multiplier', type: 'int', hint: 'ceil(sqrt(players) × this)' },
   { k: 'start.hp', label: 'Starting HP', type: 'int' },
   { k: 'start.ap', label: 'Starting AP', type: 'int' },
   { k: 'start.action_range', label: 'Starting range', type: 'int' },
-  { k: 'ap.cap', label: 'AP cap', type: 'int', nullable: true, hint: 'Blank = no cap' },
+  { k: 'ap.cap', label: 'AP cap', type: 'int', nullable: true, hint: 'No cap' },
   { k: 'actions.range_upgrade_cost', label: 'Range upgrade cost (AP)', type: 'int' },
-  { k: 'actions.max_range', label: 'Max range', type: 'int', nullable: true, hint: 'Blank = unlimited' },
+  { k: 'actions.max_range', label: 'Max range', type: 'int', nullable: true, hint: 'Unlimited' },
   { k: 'actions.allow_give_hp', label: 'Allow giving HP', type: 'bool' },
   { k: 'actions.loot_on_kill', label: 'Killer loots victim’s AP', type: 'bool' },
   { k: 'board.wreckage_blocks_tile', label: 'Wrecks block tiles', type: 'bool' },
   { k: 'jury.tie_rule', label: 'Jury tie rule', type: 'select', options: [['all', 'All tied get +1'], ['random', 'One random tied player']] },
   { k: 'jury.votes_public', label: 'Jury votes are public', type: 'bool' },
-  { k: 'max_duration_seconds', label: 'Time limit (seconds)', type: 'int', nullable: true, hint: 'Blank = none' },
+  { k: 'max_duration_seconds', label: 'Time limit (days)', type: 'int', nullable: true, hint: 'None', scale: DAY },
   { k: 'players.minimum', label: 'Min players', type: 'int' },
   { k: 'players.maximum', label: 'Max players', type: 'int' },
   { k: 'notifications.discord_webhook_url', label: 'Discord webhook (public events only)', type: 'text', nullable: true, hint: 'Optional' },
@@ -47,12 +49,12 @@ function fieldInput(f, value, disabled) {
     const input = h('input', { type: 'checkbox', checked: !!value, disabled });
     return { input, el: h('label', { class: 'check' }, input, h('span', {}, f.label)) };
   }
+  const placeholder = f.nullable ? (f.hint || '') : '';
   const input = f.type === 'select'
     ? h('select', { disabled }, f.options.map(([val, lab]) => h('option', { value: val, selected: value === val }, lab)))
-    : h('input', {
-      type: f.type === 'int' ? 'number' : 'text', inputmode: f.type === 'int' ? 'numeric' : null,
-      value: value ?? '', disabled, placeholder: f.nullable ? (f.hint || '') : '',
-    });
+    : f.type === 'int'
+      ? wholeNumberInput({ value: value == null ? '' : value / (f.scale || 1), disabled, placeholder })
+      : h('input', { type: 'text', value: value ?? '', disabled, placeholder });
   const hint = f.hint && !f.nullable ? h('div', { class: 'hint' }, f.hint) : null; // nullable fields show it as the placeholder
   return { input, el: h('label', { class: f.wide ? 'wide' : null }, h('span', {}, f.label), input, hint) };
 }
@@ -62,7 +64,7 @@ function fieldValue(f, el) {
   if (f.type === 'bool') return el.checked;
   if (f.type === 'select') return el.value;
   if (el.value.trim() === '') return f.nullable ? null : el.value;
-  return f.type === 'int' ? Number(el.value) : el.value.trim();
+  return f.type === 'int' ? Math.round(Number(el.value) * (f.scale || 1)) : el.value.trim();
 }
 
 /**

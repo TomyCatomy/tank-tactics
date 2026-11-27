@@ -1,6 +1,6 @@
 // Action sheets: move, upgrade (your own tank) and shoot / give / DM (another tank).
 // The buttons are disabled with a reason when an action looks impossible; the server re-checks everything.
-import { dot, h } from '../dom.js';
+import { dot, h, wholeNumberInput } from '../dom.js';
 import { fmtDist, inRange, rangeDist } from '../format.js';
 import { closeSheet, openSheet } from '../notify.js';
 import { openDm } from './match.js';
@@ -45,7 +45,7 @@ function actRow(label, cost, why, onclick, extra = null) {
     why ? h('div', { class: 'why' }, why) : null);
 }
 
-const amountInput = (what) => h('input', { class: 'amount', type: 'number', min: 1, value: 1, inputmode: 'numeric', 'aria-label': `${what} amount` });
+const amountInput = (what) => wholeNumberInput({ class: 'amount', min: 1, value: 1, 'aria-label': `${what} amount` });
 
 export function openMoveSheet(x, y) {
   const my = me();
@@ -66,7 +66,7 @@ export function openTargetSheet(id) {
   if (!t) return;
   const d = my && my.x >= 0 ? rangeDist(my, t) : null;
   const apIn = amountInput('AP'), hpIn = amountInput('HP');
-  const inRange = blockers({ cost: 1, target: t, needRange: true });
+  const rangeBlocker = blockers({ cost: 1, target: t, needRange: true });
   const removePlayer = async () => {
     if (confirm(`Remove ${t.name}? Their tank will be destroyed.`) && await post('remove', { player_id: t.id })) { closeSheet(); refresh(); }
   };
@@ -74,8 +74,8 @@ export function openTargetSheet(id) {
     h('h2', {}, dot(t.color), t.name),
     h('p', { class: 'muted' }, `HP ${t.hp} · Range ${t.action_range}`, t.ap !== undefined ? ` · AP ${t.ap}` : '', d !== null ? ` · distance ${fmtDist(d)}` : '',
       my && d !== null && inRange(t, my, t.action_range) ? ' · you are in their range' : ''),
-    actRow('Shoot', '1 AP · 1 damage', inRange, () => doAction({ type: 'shoot', target_id: t.id })),
-    actRow('Give AP', 'costs the AP you give', inRange,
+    actRow('Shoot', '1 AP · 1 damage', rangeBlocker, () => doAction({ type: 'shoot', target_id: t.id })),
+    actRow('Give AP', 'costs the AP you give', rangeBlocker,
       () => doAction({ type: 'give_ap', target_id: t.id, amount: Number(apIn.value) }), apIn),
     actRow('Give HP', 'costs the HP you give', giveHpBlocker(t),
       () => doAction({ type: 'give_hp', target_id: t.id, amount: Number(hpIn.value) }), hpIn),
