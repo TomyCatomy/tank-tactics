@@ -6,8 +6,11 @@ Description: >-
 Parameters:
   GitHubRepo:
     Type: String
-    Default: TomyCatomy/tank-tactics
-    AllowedPattern: "[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+"
+    Description: >-
+      The repository as GitHub's OIDC subject names it. This repo uses immutable
+      owner@id/repo@id subjects, so the plain owner/repo form would not match.
+    Default: TomyCatomy@62501688/tank-tactics@1465481455
+    AllowedPattern: "[A-Za-z0-9_.@-]+/[A-Za-z0-9_.@-]+"
 
 Resources:
   GitHubOidcProvider:
