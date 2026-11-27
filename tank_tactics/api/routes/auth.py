@@ -20,9 +20,10 @@ router = APIRouter(prefix="/api", tags=["accounts"])
 
 
 @router.get("/auth/config")
-def auth_config(service: ServiceDep) -> AuthConfig:
-    """Whether Google sign-in is available, and the client ID the browser needs for it."""
-    return AuthConfig(google_client_id=service.cfg.google_client_id)
+def auth_config(request: Request, service: ServiceDep) -> AuthConfig:
+    """Whether Google sign-in is available, and the client ID the browser needs for it;
+    also whether hosts can connect a lobby to Discord."""
+    return AuthConfig(google_client_id=service.cfg.google_client_id, discord_connect=request.app.state.discord is not None)
 
 
 @router.post("/auth/google")

@@ -13,6 +13,11 @@
 # optional: OTLP export to Grafana Cloud. With neither, telemetry is off; with only one,
 # or an endpoint that isn't https, the deploy fails the same way. The headers hold an API
 # token, so they are never printed and the file is readable by root only.
+#
+# /tank-tactics/discord-client-id (String) and /tank-tactics/discord-client-secret
+# (SecureString), optional: the Discord app behind the lobby's "Connect to Discord"
+# button. With neither the button is hidden; with only one the deploy fails. The secret
+# is never printed either.
 set -euo pipefail
 
 REGION=eu-north-1
@@ -73,6 +78,25 @@ if [[ -n "$otel_endpoint" || -n "$otel_headers" ]]; then
   fi
 fi
 
+if ! discord=$(aws ssm get-parameters --region "$REGION" --with-decryption --output text     --names /tank-tactics/discord-client-id /tank-tactics/discord-client-secret     --query '[Parameters[?Name==`/tank-tactics/discord-client-id`].Value|[0],
+              Parameters[?Name==`/tank-tactics/discord-client-secret`].Value|[0]]'); then
+  echo "Cannot read the /tank-tactics/discord-* SSM parameters." >&2
+  exit 1
+fi
+IFS=$'	' read -r discord_id discord_secret <<<"$discord"
+[[ "$discord_id" == None ]] && discord_id=""
+[[ "$discord_secret" == None ]] && discord_secret=""
+if [[ -n "$discord_id" || -n "$discord_secret" ]]; then
+  if [[ -z "$discord_id" || -z "$discord_secret" ]]; then
+    echo "Set both /tank-tactics/discord-client-id and /tank-tactics/discord-client-secret, or neither." >&2
+    exit 1
+  fi
+  if ! [[ "$discord_id" =~ ^[0-9]{15,25}$ && "$discord_secret" =~ ^[A-Za-z0-9_-]+$ ]]; then
+    echo "The /tank-tactics/discord-* parameters don't look like a Discord client ID and secret." >&2
+    exit 1
+  fi
+fi
+
 trap 'rm -f "$ENV_FILE.new"' EXIT
 install -m 600 /dev/null "$ENV_FILE.new"
 echo "GOOGLE_CLIENT_ID=$client_id" > "$ENV_FILE.new"
@@ -83,6 +107,13 @@ if [[ -n "$otel_endpoint" ]]; then
     echo "OTEL_RESOURCE_ATTRIBUTES=deployment.environment.name=production"
   } >> "$ENV_FILE.new"
 fi
+if [[ -n "$discord_id" ]]; then
+  {
+    echo "DISCORD_CLIENT_ID=$discord_id"
+    echo "DISCORD_CLIENT_SECRET=$discord_secret"
+  } >> "$ENV_FILE.new"
+fi
 mv "$ENV_FILE.new" "$ENV_FILE"
 echo "Google sign-in: on"
 echo "Telemetry export: ${otel_endpoint:-off}"
+echo "Discord connect: $([[ -n "$discord_id" ]] && echo on || echo off)"

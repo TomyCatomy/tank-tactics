@@ -71,6 +71,12 @@ Where the spec left room for interpretation, this is what I chose and why.
     ticks, restart catch-up) is one line. It accepts only
     `https://discord.com/api/webhooks/...` URLs (so the server can't be pointed at
     arbitrary hosts), and only the host can see the configured URL.
+    Hosts normally get one with **Connect to Discord** in the lobby (Discord's OAuth2
+    `webhook.incoming` flow: Discord shows a server and channel picker and creates the
+    webhook). Like every setting it is lobby-only. The OAuth `state` is single-use and
+    expires after 10 minutes, and Discord only redirects to the app's registered URLs.
+    Pasting a URL still works as a fallback. Pending attempts live in memory, so a
+    restart mid-way just means clicking the button again.
 
 ## Data model
 

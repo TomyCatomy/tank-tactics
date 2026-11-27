@@ -4,6 +4,7 @@
 import { $ } from './dom.js';
 import { chatOnScreen, phoneLobby, renderChat } from './game/chat.js';
 import { G } from './game/session.js';
+import { toast } from './notify.js';
 import { route } from './router.js';
 
 // ----- Rules modal
@@ -29,5 +30,17 @@ document.addEventListener('visibilitychange', () => {
 });
 phoneLobby.addEventListener('change', () => { if (G?.state && G.layout === 'lobby') renderChat(); });
 
+// ----- Back from "Connect to Discord" (see game/lobby.js): the server redirects to
+// /?discord=<outcome>#/g/<id>. Say how it went, then drop the query from the URL.
+const DISCORD_OUTCOMES = {
+  connected: ['Connected! Game updates will be posted in that Discord channel.', 'good'],
+  cancelled: ['Discord connection cancelled.', 'info'],
+  failed: ['Couldn’t connect to Discord. Try again.', 'error'],
+  expired: ['That Discord connection took too long. Start again from the lobby.', 'error'],
+};
+const discordOutcome = DISCORD_OUTCOMES[new URLSearchParams(location.search).get('discord')];
+if (location.search) history.replaceState(null, '', location.pathname + location.hash);
+
 window.addEventListener('hashchange', route);
 route();
+if (discordOutcome) toast(...discordOutcome);

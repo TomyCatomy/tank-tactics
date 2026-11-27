@@ -40,6 +40,7 @@ tank_tactics/
     hub.py       WebSocket connections and per-viewer broadcast
     background.py  the tick scheduler
     notify.py    Discord webhook (public events only)
+    discord_oauth.py  "Connect to Discord": the OAuth flow that creates the webhook
   server.py    entry point: runs the app with uvicorn
 public/        the web client (index.html, style.css, plain ES modules in js/)
   js/main.js   entry point: rules modal, global listeners, starts the router
@@ -90,6 +91,7 @@ is validated on startup.
 | `SCHEDULER_MAX_SLEEP` | `5` | Max seconds between scheduler checks |
 | `MAX_MESSAGE_LENGTH` | `1000` | Chat message length limit |
 | `GOOGLE_CLIENT_ID` | unset | OAuth client ID for the optional "Sign in with Google"; unset turns it off |
+| `DISCORD_CLIENT_ID` / `DISCORD_CLIENT_SECRET` | unset | Discord app for the lobby's "Connect to Discord" button; off unless both are set |
 | `SESSION_TTL_DAYS` | `30` | How long a sign-in lasts |
 | `LOGIN_RATE_PER_MINUTE` | `10` | Sign-in attempts per client IP per minute |
 
@@ -196,7 +198,8 @@ All state-changing requests use `Authorization: Bearer <player token>`.
 | `POST /api/games/{id}/vote` | `{candidate_id}` | jurors, jury enabled only |
 | `POST /api/games/{id}/chat` | `{to_id: null\|player_id, text}` | |
 | `WS /ws/{id}` | first message `{type: auth, token}` | pushes `{type: state, state}` on every change |
-| `GET /api/auth/config` | | `{google_client_id}`; `null` when sign-in is off |
+| `GET /api/auth/config` | | `{google_client_id, discord_connect}`; `null` / `false` when off |
+| `POST /api/games/{id}/discord/connect` | `{origin}` | host, lobby only; returns `{url}`, Discord's page to pick a channel. Discord sends the host back to `GET /api/discord/callback`, which saves the webhook |
 | `POST /api/auth/google` | `{credential}` | Google ID token in, `{token, user}` session out |
 | `POST /api/auth/logout` | | session; ends it (saved seat tokens keep working) |
 | `GET /api/me` · `GET /api/me/games` | | session; your account and your linked seats |

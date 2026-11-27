@@ -37,6 +37,15 @@ class ConfigUpdateRequest(_Body):
     config: dict[str, Any]
 
 
+class DiscordConnectRequest(_Body):
+    # The site the host is on (``location.origin``); Discord returns them there.
+    origin: str = Field(pattern=r"^https?://[A-Za-z0-9.-]+(:[0-9]{1,5})?$", max_length=200)
+
+
+class DiscordConnectStart(BaseModel):
+    url: str  # Discord's authorize page, to open in the host's browser
+
+
 class SchedulePreviewRequest(_Body):
     rrule: UnicodeText
     timezone: UnicodeText
@@ -95,6 +104,7 @@ class Ok(BaseModel):
 
 class AuthConfig(BaseModel):
     google_client_id: str | None  # None = Google sign-in is off
+    discord_connect: bool = False  # the lobby can offer "Connect to Discord"
 
 
 class GoogleSignInRequest(_Body):
