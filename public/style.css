@@ -91,6 +91,22 @@ label { display: block; }
 .row { display: flex; gap: 8px; align-items: center; }
 .row > * { flex: 1; }
 .row > .shrink { flex: 0 0 auto; }
+
+button.discord-button { border-radius: 999px; padding: 0 16px; background: rgba(88, 101, 242, .3); border-color: #5865f2; color: #e3e5fd; }
+button.discord-button:hover { background: rgba(88, 101, 242, .45); }
+.discord-row { position: relative; justify-content: flex-start; }
+.discord-row > * { flex: 0 0 auto; }
+
+/* "?" tooltip (dom.js helpTip). The bubble is placed against the nearest positioned ancestor. */
+button.help-tip { min-height: 30px; width: 30px; padding: 0; border: 0; background: transparent; display: inline-grid; place-items: center; }
+.help-tip-icon { width: 18px; height: 18px; border-radius: 50%; border: 1px solid var(--muted); color: var(--muted);
+  font-size: 12px; font-weight: 700; line-height: 16px; text-align: center; }
+button.help-tip:hover .help-tip-icon, button.help-tip:focus-visible .help-tip-icon, button.help-tip.open .help-tip-icon { border-color: var(--text); color: var(--text); }
+.help-tip-text { position: absolute; left: 0; top: calc(100% + 6px); z-index: 20; max-width: min(320px, 100%);
+  padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2); color: var(--text);
+  font-size: .85rem; line-height: 1.4; box-shadow: 0 6px 18px rgba(0, 0, 0, .35);
+  visibility: hidden; opacity: 0; transition: opacity .12s; pointer-events: none; }
+.help-tip:hover + .help-tip-text, .help-tip:focus-visible + .help-tip-text, .help-tip.open + .help-tip-text { visibility: visible; opacity: 1; }
 .stack > * + * { margin-top: 12px; }
 
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; }

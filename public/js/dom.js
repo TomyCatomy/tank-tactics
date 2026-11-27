@@ -56,3 +56,21 @@ export const messageCard = (title, text, { back = 'Back', narrow = false } = {})
 export const tabButtons = (tabs, active, onSelect, unread = 0) => tabs.map(([k, label]) => h('button', {
   type: 'button', role: 'tab', 'aria-selected': String(active === k), onclick: () => onSelect(k),
 }, label, k === 'chat' && unread ? h('span', { class: 'count' }, String(unread)) : null));
+
+let tipCount = 0;
+/**
+ * A "?" circle that shows `text` in a tooltip on hover, keyboard focus or tap (Safari doesn't
+ * focus buttons on tap, so a click toggles it too). Place it inside a positioned container:
+ * the bubble spans that container's width below it, so it never runs off a phone screen.
+ */
+export function helpTip(text) {
+  const id = `tip-${++tipCount}`;
+  const tip = h('span', { class: 'help-tip-text', role: 'tooltip', id }, text);
+  const btn = h('button', {
+    type: 'button', class: 'help-tip', 'aria-label': 'More info', 'aria-describedby': id,
+    onclick: () => btn.classList.toggle('open'),
+    onblur: () => btn.classList.remove('open'),
+    onkeydown: (e) => { if (e.key === 'Escape') { btn.classList.remove('open'); btn.blur(); } },
+  }, h('span', { class: 'help-tip-icon', 'aria-hidden': 'true' }, '?'));
+  return h('span', { class: 'help-tip-wrap' }, btn, tip);
+}

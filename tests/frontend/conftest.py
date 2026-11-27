@@ -33,9 +33,10 @@ def pytest_collection_modifyitems(items):
 class LiveServer:
     """Runs the app on a fixed port in a background thread; can be stopped and restarted."""
 
-    def __init__(self, service, google_verifier=None):
+    def __init__(self, service, google_verifier=None, discord_connect=None):
         self.service = service
         self.google_verifier = google_verifier
+        self.discord_connect = discord_connect
         with socket.socket() as s:
             s.bind(("127.0.0.1", 0))
             self.port = s.getsockname()[1]
@@ -49,7 +50,7 @@ class LiveServer:
 
     def start(self) -> None:
         # A fresh app each time, like a real restart (new event loop, new Hub).
-        config = uvicorn.Config(create_app(self.service, self.google_verifier), host="127.0.0.1", port=self.port,
+        config = uvicorn.Config(create_app(self.service, self.google_verifier, self.discord_connect), host="127.0.0.1", port=self.port,
                                 log_level="warning", timeout_graceful_shutdown=1)
         self._server = uvicorn.Server(config)
         self._thread = threading.Thread(target=self._run, args=(self._server,), daemon=True)

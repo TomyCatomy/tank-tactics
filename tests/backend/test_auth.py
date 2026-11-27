@@ -92,14 +92,14 @@ def test_verifier_rejects_a_forged_signature(rsa_key):
 
 def test_sign_in_is_off_without_a_client_id(api):
     client, _, _ = api
-    assert client.get("/api/auth/config").json() == {"google_client_id": None}
+    assert client.get("/api/auth/config").json()["google_client_id"] is None
     r = client.post("/api/auth/google", json={"credential": "good:x:y"})
     assert r.status_code == 404
 
 
 def test_sign_in_and_me(acct):
     client, _, _ = acct
-    assert client.get("/api/auth/config").json() == {"google_client_id": CLIENT_ID}
+    assert client.get("/api/auth/config").json()["google_client_id"] == CLIENT_ID
     token = sign_in(client)
     me = client.get("/api/me", headers=bearer(token)).json()
     assert me["name"] == "Ann"

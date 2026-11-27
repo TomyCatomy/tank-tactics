@@ -134,6 +134,30 @@ logs in Loki, and metrics in Prometheus as `tank_tactics_games`, `tank_tactics_w
 traffic (about 1,000 players) it uses a small part of the free tier, and egress to
 Grafana stays within AWS's free 100 GB a month.
 
+
+## Connect to Discord (optional)
+
+The lobby's **Connect to Discord** button lets a host pick a Discord server and channel
+instead of pasting a webhook URL (see [`discord_oauth.py`](../../tank_tactics/api/discord_oauth.py)).
+It needs a Discord application, and it is off (the button is hidden) unless both
+parameters below exist.
+
+1. In the [Discord Developer Portal](https://discord.com/developers/applications), create
+   an application. Under **OAuth2 > Redirects**, add
+   `https://tanktactics.io/api/discord/callback` (and
+   `http://localhost:8080/api/discord/callback` for local testing). It needs no bot user.
+2. Store its **Client ID** and **Client Secret** in SSM. The secret goes in a `SecureString`:
+
+   ```bash
+   aws ssm put-parameter --profile tank-tactics --region eu-north-1 --type String      --name /tank-tactics/discord-client-id --value '<client id>'
+   aws ssm put-parameter --profile tank-tactics --region eu-north-1 --type SecureString      --name /tank-tactics/discord-client-secret --value '<client secret>'
+   ```
+
+3. Run `redeploy`. Its log says `Discord connect: on`; the secret is never printed.
+
+Setting only one of the two fails the deploy before the restart. To turn it off, delete
+both and `redeploy`; games that already have a webhook keep posting.
+
 ## Why this shape
 
 The server is a single stateful process: games live in memory, WebSockets stay open, a

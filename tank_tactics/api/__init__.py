@@ -18,20 +18,27 @@ from fastapi.staticfiles import StaticFiles
 from ..service import GameService
 from .background import run_scheduler
 from .errors import error_response, install_error_handlers
+from .discord_oauth import DiscordConnect
 from .hub import Hub
 from .google import GoogleTokenVerifier, GoogleVerifier
-from .routes import auth, chat, games, live, lobby, play
+from .routes import auth, chat, discord, games, live, lobby, play
 
 PUBLIC_DIR = Path(__file__).resolve().parent.parent.parent / "public"
 MAX_BODY_BYTES = 64 * 1024
 
 
-def create_app(service: GameService, google_verifier: GoogleVerifier | None = None) -> FastAPI:
+def create_app(
+    service: GameService, google_verifier: GoogleVerifier | None = None, discord_connect: DiscordConnect | None = None
+) -> FastAPI:
     """``google_verifier`` checks Google ID tokens; by default it is built from
-    ``GOOGLE_CLIENT_ID``, and Google sign-in is off when that is unset."""
+    ``GOOGLE_CLIENT_ID``, and Google sign-in is off when that is unset. ``discord_connect``
+    likewise defaults to ``DISCORD_CLIENT_ID`` + ``DISCORD_CLIENT_SECRET`` (off without both)."""
     hub = Hub(service)
-    if google_verifier is None and service.cfg.google_client_id:
-        google_verifier = GoogleTokenVerifier(service.cfg.google_client_id)
+    cfg = service.cfg
+    if google_verifier is None and cfg.google_client_id:
+        google_verifier = GoogleTokenVerifier(cfg.google_client_id)
+    if discord_connect is None and cfg.discord_client_id and cfg.discord_client_secret:
+        discord_connect = DiscordConnect(cfg.discord_client_id, cfg.discord_client_secret.get_secret_value())
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -44,6 +51,7 @@ def create_app(service: GameService, google_verifier: GoogleVerifier | None = No
     app.state.service = service
     app.state.hub = hub
     app.state.google_verifier = google_verifier
+    app.state.discord = discord_connect
     install_error_handlers(app)
 
     @app.middleware("http")
@@ -61,7 +69,7 @@ def create_app(service: GameService, google_verifier: GoogleVerifier | None = No
             response.headers.setdefault("Cache-Control", "no-cache")
         return response
 
-    for module in (games, lobby, play, chat, live, auth):
+    for module in (games, lobby, play, chat, live, auth, discord):
         app.include_router(module.router)
 
     @app.get("/", include_in_schema=False)

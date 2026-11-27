@@ -32,7 +32,7 @@ const FIELDS = [
   { k: 'max_duration_seconds', label: 'Time limit (days)', type: 'int', nullable: true, hint: 'None', scale: DAY },
   { k: 'players.minimum', label: 'Min players', type: 'int' },
   { k: 'players.maximum', label: 'Max players', type: 'int' },
-  { k: 'notifications.discord_webhook_url', label: 'Discord webhook (public events only)', type: 'text', nullable: true, hint: 'Optional' },
+  { k: 'notifications.discord_webhook_url', label: 'Discord webhook URL (or use “Connect to Discord” in the lobby)', type: 'text', nullable: true, hint: 'Optional' },
 ];
 
 const getPath = (obj, path) => path.split('.').reduce((o, k) => (o == null ? undefined : o[k]), obj);
