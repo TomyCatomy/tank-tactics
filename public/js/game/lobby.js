@@ -1,7 +1,7 @@
 // The lobby screen: invite links, players, chat and settings. On phones one panel shows at a time.
-import { api } from '../api.js';
+import { api, authConfig } from '../api.js';
 import { configForm } from '../config-form.js';
-import { $, dot, fill, h, tabButtons } from '../dom.js';
+import { $, dot, fill, h, helpTip, tabButtons } from '../dom.js';
 import { copyRow, toast } from '../notify.js';
 import { route } from '../router.js';
 import { saved } from '../storage.js';
@@ -15,6 +15,7 @@ function buildLobby() {
   const n = G.nodes = {
     players: h('div'),
     config: h('div'),
+    discord: h('div', { class: 'discord-connect stack' }),
     start: h('div', { class: 'lobby-start' }),
     intro: h('p', { class: 'muted' }),
     seats: h('div'),
@@ -30,7 +31,7 @@ function buildLobby() {
       n.start),
     players: h('div', { class: 'stack lobby-panel lobby-players' }, n.seats, h('div', { class: 'card' }, n.players)),
     chat: h('div', { class: 'card lobby-panel lobby-chat' }, h('h2', {}, 'Chat'), n.chat),
-    settings: h('div', { class: 'card stack lobby-panel lobby-settings' }, h('h2', {}, 'Game settings'), n.config),
+    settings: h('div', { class: 'card stack lobby-panel lobby-settings' }, h('h2', {}, 'Game settings'), n.discord, n.config),
   };
   const p = n.lobbyPanels;
   $('#app').replaceChildren(h('div', { class: 'lobby' },
@@ -52,6 +53,7 @@ export function renderLobby() {
   renderSeatControls(need);
   renderStart(need);
   renderSettings();
+  renderDiscord();
   renderChat(); // also draws the tabs
 }
 
@@ -120,6 +122,41 @@ function renderSettings() {
   fill(G.nodes.config, form, isHost ? h('div', { class: 'row config-actions' },
     h('button', { class: 'primary', onclick: save }, 'Save settings'),
     h('button', { onclick: () => { reset(); render(); } }, 'Discard changes')) : null);
+}
+
+/**
+ * Host: connect the lobby to a Discord channel. Discord shows a server and channel picker,
+ * creates the webhook and sends the host back here (main.js shows how it went).
+ */
+async function renderDiscord() {
+  const st = G.state, node = G.nodes.discord;
+  const connected = !!st.game.config.notifications.discord_webhook_url; // only the host can see it
+  const available = me()?.is_host && (connected || (await authConfig()).discord_connect);
+  if (G.state !== st) return; // a newer render has run meanwhile
+  if (!available) { fill(node); node.hidden = true; return; }
+  node.hidden = false;
+  // Leaving for Discord, or a config change, would lose unsaved edits in the form below.
+  const editing = () => G.configDirty && (toast('Save or discard your settings changes first.', 'error'), true);
+  const connect = async (ev) => {
+    if (editing()) return;
+    const btn = ev.currentTarget;
+    btn.disabled = true;
+    try {
+      const res = await api('POST', `/api/games/${G.gid}/discord/connect`, { origin: location.origin }, G.token);
+      location.assign(res.url);
+    } catch (e) { toast(e.message, 'error'); btn.disabled = false; }
+  };
+  const disconnect = async () => {
+    if (editing() || !confirm('Stop posting this game’s updates to Discord?')) return;
+    if (await postAndRefresh('config', { config: { notifications: { discord_webhook_url: null } } })) toast('Disconnected from Discord.', 'good');
+  };
+  fill(node, connected
+    ? h('div', { class: 'row' },
+      h('span', {}, '✅ Connected to Discord: game updates are posted there.'),
+      h('button', { class: 'small shrink', onclick: disconnect }, 'Disconnect'))
+    : h('div', { class: 'row discord-row' },
+      h('button', { class: 'small discord-button', onclick: connect }, 'Connect to Discord'),
+      helpTip('Pick a Discord server and channel, and this game’s public updates (the start, AP handouts, kills and the winner) are posted there. Hidden moves never are.')));
 }
 
 /** Debug: join extra players from this browser (only when the game enables debug.local_seats). */

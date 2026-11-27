@@ -41,9 +41,9 @@ export function once(load) {
 /** GET /api/defaults: {config, allow_debug, timezones}. */
 export const serverDefaults = once(() => api('GET', '/api/defaults'));
 
-/** GET /api/auth/config: {google_client_id} (null when sign-in is off or the request failed). */
+/** GET /api/auth/config: {google_client_id, discord_connect} (null / false when off or the request failed). */
 const loadAuthConfig = once(() => api('GET', '/api/auth/config'));
-export const authConfig = () => loadAuthConfig().catch(() => ({ google_client_id: null }));
+export const authConfig = () => loadAuthConfig().catch(() => ({ google_client_id: null, discord_connect: false }));
 
 /** The browser's IANA time zone, or null if it has none. */
 export function browserZone() {

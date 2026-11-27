@@ -13,7 +13,7 @@ import math
 from typing import Any, Literal, Self
 from urllib.parse import urlparse
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, ValidationError, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from . import recurrence
@@ -280,5 +280,9 @@ class ServerConfig(BaseSettings):
     google_client_id: str | None = Field(
         None, description="OAuth client ID for 'Sign in with Google'. Unset = Google sign-in is off."
     )
+    discord_client_id: str | None = Field(
+        None, description="Discord app for the lobby's 'Connect to Discord'. Needs the secret too; unset = off."
+    )
+    discord_client_secret: SecretStr | None = Field(None, description="The Discord app's OAuth2 client secret.")
     session_ttl_days: int = Field(30, ge=1, le=365, description="How long a sign-in lasts before it must be renewed.")
     login_rate_per_minute: int = Field(10, ge=1, description="Max sign-in attempts per client IP per minute.")

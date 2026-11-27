@@ -29,6 +29,7 @@ import tempfile
 import threading
 import time
 import traceback
+import urllib.parse
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Callable
@@ -85,13 +86,16 @@ class Server:
         self.env = {
             "HOST": "127.0.0.1", "PORT": str(self.port), "DB_PATH": str(self.db), "SCHEDULER_MAX_SLEEP": "0.2",
             "ACTION_RATE_PER_SECOND": "100000", "CHAT_RATE_PER_10S": "1000000", "LOGIN_RATE_PER_MINUTE": "100000",
-            "PYTHONUNBUFFERED": "1", "ALLOW_DEBUG": "true", **env,
+            "PYTHONUNBUFFERED": "1", "ALLOW_DEBUG": "true",
+            # A made-up Discord app, so "Connect to Discord" is on (Discord itself is never called).
+            "DISCORD_CLIENT_ID": "100000000000000001", "DISCORD_CLIENT_SECRET": "playtest-not-a-secret", **env,
         }
         self.proc: subprocess.Popen | None = None
         self.http: httpx.Client | None = None
 
     def start(self) -> None:
-        env = {k: v for k, v in os.environ.items() if k.upper() != "GOOGLE_CLIENT_ID"}
+        own = {"GOOGLE_CLIENT_ID", "DISCORD_CLIENT_ID", "DISCORD_CLIENT_SECRET"}
+        env = {k: v for k, v in os.environ.items() if k.upper() not in own}
         env.update(self.env)
         log = open(self.logfile, "ab")
         self.proc = subprocess.Popen([sys.executable, "-m", "tank_tactics.server"], cwd=self.root, env=env,
@@ -398,6 +402,34 @@ def config_update_applies_and_resets_stats(t: T):
     for p in v["players"]:
         t.eq((p["hp"], p["ap"], p["action_range"]), (7, 9, 4), "joined players get the new stats")
     t.err(t.post(t.lobby(3)[0], "config", {"config": {"players": {"maximum": 2}}}), 400, "lobby_full", "max below joined")
+
+
+@scenario("config")
+def discord_connect_round_trip(t: T):
+    """The host's "Connect to Discord" trip, up to Discord (which can't be played here): the
+    authorize link, and coming back cancelled, unknown or reused. The code exchange itself is
+    covered by tests/backend/test_discord_connect.py with a fake Discord."""
+    t.eq(t.req("GET", "/api/auth/config").json().get("discord_connect"), True, "Discord connect on")
+    h, b = t.lobby(2)
+    origin = {"origin": "https://tanktactics.example"}
+    t.err(t.post(b, "discord/connect", origin), 400, "forbidden", "a guest connecting Discord")
+    t.err(t.post(h, "discord/connect", {"origin": "javascript:alert(1)"}), 400, None, "a bad origin")
+    r = t.good(t.post(h, "discord/connect", origin), "host starts connecting")
+    url = urllib.parse.urlparse(r.json()["url"])
+    q = dict(urllib.parse.parse_qsl(url.query))
+    t.eq((url.netloc, q.get("scope")), ("discord.com", "webhook.incoming"), "goes to Discord's channel picker")
+    t.eq(q.get("redirect_uri"), "https://tanktactics.example/api/discord/callback", "comes back to the host's site")
+
+    def back(**query) -> str:
+        r = t.req("GET", "/api/discord/callback", params=query, follow_redirects=False)
+        t.eq(r.status_code, 303, "callback redirects")
+        return r.headers.get("location", "")
+    t.eq(back(error="access_denied", state=q["state"]), f"/?discord=cancelled#/g/{h.game_id}", "cancelled on Discord")
+    t.eq(back(code="x", state=q["state"]), "/?discord=expired#/", "a used state is refused")
+    t.eq(back(code="x", state="made-up"), "/?discord=expired#/", "an unknown state is refused")
+    t.eq(t.view(h)["game"]["config"]["notifications"]["discord_webhook_url"], None, "nothing was saved")
+    t.good(t.post(h, "start"), "start")
+    t.err(t.post(h, "discord/connect", origin), 400, "not_lobby", "connecting after the start")
 
 
 @scenario("config")
