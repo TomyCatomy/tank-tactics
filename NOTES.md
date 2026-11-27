@@ -65,10 +65,12 @@ Where the spec left room for interpretation, this is what I chose and why.
 14. **Replay** is rebuilt on the client from the viewer's own redacted log. Public
     shot entries carry `target_hp_after`, so HP changes from gifts the viewer couldn't
     see are corrected at the target's next shot.
-15. **Discord webhook** posts only public events (start, kills, removals, game over), so
-    it can't leak hidden information. It accepts only `https://discord.com/api/webhooks/...`
-    URLs (so the server can't be pointed at arbitrary hosts), and only the host can see
-    the configured URL.
+15. **Discord webhook** posts only public events (start, AP ticks, kills, removals,
+    game over), so it can't leak hidden information. An AP tick says how much AP every
+    living tank got, never anyone's balance, and a run of ticks applied together (fast
+    ticks, restart catch-up) is one line. It accepts only
+    `https://discord.com/api/webhooks/...` URLs (so the server can't be pointed at
+    arbitrary hosts), and only the host can see the configured URL.
 
 ## Data model
 

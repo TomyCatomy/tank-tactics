@@ -9,7 +9,7 @@ from fastapi import WebSocket
 
 from .. import game
 from ..service import GameService
-from .notify import discord_line, post_discord
+from .notify import discord_lines, post_discord
 
 log = logging.getLogger("tank_tactics")
 
@@ -75,7 +75,7 @@ class Hub:
         state = self.service.get(game_id)
         url = state.config.notifications.discord_webhook_url if state else None
         if state is not None and url and entries:
-            lines = [line for line in (discord_line(state, e) for e in entries) if line]
+            lines = discord_lines(state, entries)
             if lines:
                 self.spawn(post_discord(url, lines))
 
