@@ -3,7 +3,7 @@
 # The AWS deploy workflow substitutes __BUCKET__, __REGION__ and __FETCH_CONFIG_B64__
 # (deploy/aws/fetch-config.sh, base64-encoded).
 set -euxo pipefail
-install -m 644 /dev/null /etc/tank-tactics.env
+install -m 600 /dev/null /etc/tank-tactics.env  # may hold the Grafana Cloud token
 echo '__FETCH_CONFIG_B64__' | base64 -d > /usr/local/bin/tank-tactics-config
 chmod 755 /usr/local/bin/tank-tactics-config
 # Settings from SSM Parameter Store. Google sign-in is required: if this fails, boot stops
