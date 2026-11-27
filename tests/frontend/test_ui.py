@@ -886,3 +886,19 @@ def test_tapping_another_tank_opens_its_action_sheet(server, page):
     page.locator(".plist li", has_text="Bob").click()
     for action in ("Shoot", "Give AP", "Open DM"):
         page.get_by_role("button", name=action).wait_for()
+
+
+def test_me_tab_shows_your_stats_and_actions(server, page):
+    """The Me tab used to throw on every render and stay blank (a variable shadowed inRange())."""
+    errors = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    host, _ = create_game(server)
+    with httpx.Client(base_url=server.url) as c:
+        r = c.post(f"/api/games/{host['game_id']}/start", headers={"Authorization": f"Bearer {host['token']}"})
+        assert r.status_code == 200, r.text
+    open_as(page, server, host)
+    page.locator(".actions-list", has_text="Upgrade range").wait_for()
+    assert page.locator(".stats .stat").count() == 3
+    assert "in range" in page.locator(".actions-list").inner_text()
+    assert errors == []
+
