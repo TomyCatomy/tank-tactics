@@ -254,12 +254,11 @@ def test_debug_options_rejected_when_not_allowed(locked_api, debug):
     assert state["game"]["config"]["debug"] == GameConfig().debug.model_dump()
 
 
-def test_existing_debug_game_survives_turning_the_flag_off(tmp_path):
-    path = str(tmp_path / "g.db")
-    on, _ = make_service(path, allow_debug=True)
+def test_existing_debug_game_survives_turning_the_flag_off(db):
+    on, _ = make_service(db, allow_debug=True)
     host = on.create_game("Ann", {"debug": {"fast_ticks": True}})
 
-    off, _ = make_service(path, allow_debug=False)
+    off, _ = make_service(db, allow_debug=False)
     off.update_config(host["game_id"], host["player_id"], {"jury": {"enabled": True}})  # unrelated edits still work
     assert off.get(host["game_id"]).config.debug.fast_ticks is True
     off.update_config(host["game_id"], host["player_id"], {"debug": {"fast_ticks": False}})  # and it can be turned off

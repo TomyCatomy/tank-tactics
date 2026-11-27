@@ -1,18 +1,16 @@
-"""Optional Google sign-in: token verification, sessions, linked seats, and the
-schema upgrade for databases made before accounts existed."""
+"""Optional Google sign-in: token verification, sessions and linked seats."""
 from __future__ import annotations
 
-import sqlite3
 import time
 
 import jwt
 import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi.testclient import TestClient
+from sqlalchemy import inspect
 
 from tank_tactics.api import create_app
 from tank_tactics.api.google import GoogleIdentity, GoogleTokenVerifier, InvalidGoogleToken
-from tank_tactics.service import ServiceError
 
 from ..support import FAKE_GOOGLE_CLIENT_ID as CLIENT_ID
 from ..support import fake_google_verifier as fake_verifier
@@ -247,8 +245,7 @@ def test_sign_in_is_rate_limited(acct):
 
 # -- service / persistence ------------------------------------------------------------------------
 
-def test_accounts_and_claimed_tokens_survive_a_restart(tmp_path):
-    db = str(tmp_path / "tt.db")
+def test_accounts_and_claimed_tokens_survive_a_restart(db):
     svc, clock = make_service(db)
     session = svc.sign_in("sub-ann", "Ann")
     uid = session["user"]["id"]
@@ -261,31 +258,8 @@ def test_accounts_and_claimed_tokens_survive_a_restart(tmp_path):
     assert [g["game_id"] for g in svc2.user_games(uid)] == [host["game_id"]]
 
 
-def test_old_database_gets_the_user_id_column(tmp_path):
-    """A database from before accounts: ``players`` has no ``user_id``."""
-    db = tmp_path / "old.db"
-    svc, clock = make_service(str(db))
-    host = svc.create_game("Ann")
-    svc.store.close()
-    # Rebuild ``players`` as the previous version created it (SQLite can't drop a
-    # column that has a foreign key).
-    con = sqlite3.connect(db)
-    con.execute("PRAGMA foreign_keys=OFF")
-    ddl = con.execute("SELECT sql FROM sqlite_master WHERE name = 'players'").fetchone()[0]
-    old = ddl.replace("user_id VARCHAR, ", "").replace(", \n\tFOREIGN KEY(user_id) REFERENCES users (id)", "")
-    assert "user_id" not in old
-    cols = ", ".join(r[1] for r in con.execute("PRAGMA table_info(players)") if r[1] != "user_id")
-    con.execute(old.replace("CREATE TABLE players", "CREATE TABLE players_old"))
-    con.execute(f"INSERT INTO players_old ({cols}) SELECT {cols} FROM players")
-    con.execute("DROP TABLE players")
-    con.execute("ALTER TABLE players_old RENAME TO players")
-    con.commit()
-    con.close()
-
-    svc2, _ = make_service(str(db), clock=clock)
-    assert svc2.authenticate(host["game_id"], host["token"]) == host["player_id"]
-    uid = svc2.sign_in("sub-ann", "Ann")["user"]["id"]
-    svc2.join_game(host["game_id"], "Ann's account", user_id=uid)
-    assert len(svc2.user_games(uid)) == 1
-    with pytest.raises(ServiceError):
-        svc2.join_game(host["game_id"], "Again", user_id=uid)
+def test_database_enforces_one_seat_per_account_per_game(db):
+    svc, _ = make_service(db)
+    indexes = inspect(svc.store._engine).get_indexes("players")
+    assert {"name": "players_game_user", "column_names": ["game_id", "user_id"], "unique": True}.items() <= next(
+        i for i in indexes if i["name"] == "players_game_user").items()

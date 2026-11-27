@@ -88,7 +88,10 @@ class Server:
             "ACTION_RATE_PER_SECOND": "100000", "CHAT_RATE_PER_10S": "1000000", "LOGIN_RATE_PER_MINUTE": "100000",
             "PYTHONUNBUFFERED": "1", "ALLOW_DEBUG": "true",
             # A made-up Discord app, so "Connect to Discord" is on (Discord itself is never called).
-            "DISCORD_CLIENT_ID": "100000000000000001", "DISCORD_CLIENT_SECRET": "playtest-not-a-secret", **env,
+            "DISCORD_CLIENT_ID": "100000000000000001", "DISCORD_CLIENT_SECRET": "playtest-not-a-secret",
+            # The server also reads .env/.env.local, where `neon env pull` puts the real
+            # database; empty variables win over those files and keep it on DB_PATH.
+            "DATABASE_URL": "", "DATABASE_URL_UNPOOLED": "", **env,
         }
         self.proc: subprocess.Popen | None = None
         self.http: httpx.Client | None = None

@@ -1,4 +1,4 @@
-"""SQLite persistence via SQLAlchemy (2.0-style ORM).
+"""Persistence via SQLAlchemy (2.0-style ORM), on SQLite or Postgres (see ``database``).
 
 The server keeps game states in memory and writes every change through to the
 database in one transaction. On boot it loads the live games (lobby/active) back,
@@ -8,15 +8,13 @@ on disk and are read on demand.
 from __future__ import annotations
 
 import hashlib
-import os
 import threading
 from dataclasses import dataclass
 from typing import Any, Iterable
 
-from sqlalchemy import JSON, ForeignKey, Index, create_engine, delete, event, select, text
+from sqlalchemy import JSON, ForeignKey, Index, delete, select
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, relationship, sessionmaker
-from sqlalchemy.pool import StaticPool
 
 from .config import GameConfig
 from .game import EventType, GameState, JuryVote, LogEntry, Player
@@ -71,6 +69,8 @@ class GameRow(Base):
 
 class PlayerRow(Base):
     __tablename__ = "players"
+    # One seat per account per game. NULLs (anonymous players) never collide.
+    __table_args__ = (Index("players_game_user", "game_id", "user_id", unique=True),)
 
     id: Mapped[str] = mapped_column(primary_key=True)
     game_id: Mapped[str] = mapped_column(ForeignKey("games.id"), index=True)
@@ -184,32 +184,17 @@ class MessageRow(Base):
 
 # -- store ----------------------------------------------------------------------------
 
-def _make_engine(path: str) -> Engine:
-    if path == ":memory:":
-        # One shared connection, or each session would see its own empty database.
-        engine = create_engine("sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False})
-    else:
-        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
-        engine = create_engine(f"sqlite:///{os.path.abspath(path)}", connect_args={"check_same_thread": False})
-
-    @event.listens_for(engine, "connect")
-    def _sqlite_pragmas(dbapi_conn: Any, _record: Any) -> None:
-        cur = dbapi_conn.cursor()
-        cur.execute("PRAGMA journal_mode=WAL")
-        cur.execute("PRAGMA foreign_keys=ON")
-        cur.close()
-
-    return engine
-
-
 class Store:
-    def __init__(self, path: str):
-        self._engine = _make_engine(path)
-        Base.metadata.create_all(self._engine)
-        _migrate(self._engine)
+    def __init__(self, engine: Engine, schema_engine: Engine | None = None):
+        """A store on ``engine`` (see ``database.make_engine``), which it disposes on
+        ``close``. Missing tables are created through ``schema_engine`` when given
+        (Neon's direct, unpooled URL); the caller keeps ownership of that one."""
+        self._engine = engine
+        Base.metadata.create_all(schema_engine or engine)
         self._sessions = sessionmaker(self._engine)
         # SQLite allows one writer; serialising here also makes the in-memory
-        # database (a single shared connection) safe to use from several threads.
+        # database (a single shared connection) safe to use from several threads,
+        # and keeps writes to a game in commit order on Postgres too.
         self._lock = threading.Lock()
 
     def close(self) -> None:
@@ -372,20 +357,6 @@ class Store:
         with self._lock, self._sessions() as session:
             q = select(MessageRow).where(MessageRow.game_id == game_id).order_by(MessageRow.id)
             return [_message(r) for r in session.scalars(q)]
-
-
-# -- schema upgrades -------------------------------------------------------------------------
-
-def _migrate(engine: Engine) -> None:
-    """Bring a database made by an older version up to date: ``create_all`` creates
-    missing tables but never adds columns to existing ones."""
-    with engine.begin() as conn:
-        columns = {row[1] for row in conn.execute(text("PRAGMA table_info(players)"))}
-        if "user_id" not in columns:
-            conn.execute(text("ALTER TABLE players ADD COLUMN user_id VARCHAR REFERENCES users(id)"))
-            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_players_user_id ON players (user_id)"))
-        # One seat per account per game. NULLs (anonymous players) never collide.
-        conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS players_game_user ON players (game_id, user_id)"))
 
 
 # -- row <-> domain conversion ------------------------------------------------------------
