@@ -10,6 +10,7 @@ so the rules below are an independent second opinion on the implementation.
     ... playtest.py --only fog,jury         # some areas
     ... playtest.py --seed 123              # reproduce a fuzz failure
     ... playtest.py --list                  # show every scenario
+    ... playtest.py --strict                # CI: a skipped scenario (no browser) is a harness error
 
 Exit code: 0 = all passed, 1 = something failed, 2 = the harness itself could not run.
 """
@@ -1656,6 +1657,7 @@ def main() -> int:
     ap.add_argument("--fuzz-games", type=int)
     ap.add_argument("--out", help="write a JSON report here")
     ap.add_argument("--list", action="store_true")
+    ap.add_argument("--strict", action="store_true", help="exit 2 if any scenario was skipped (for CI)")
     args = ap.parse_args()
 
     if args.list:
@@ -1729,7 +1731,12 @@ def main() -> int:
     if args.out:
         Path(args.out).write_text(json.dumps({"seed": h.seed, "passed": not failed, "results": results,
                                               "skipped": skipped, "stats": h.stats}, indent=1), encoding="utf-8")
-    return 1 if failed else 0
+    if failed:
+        return 1
+    if skipped and args.strict:
+        print("HARNESS ERROR: --strict and some scenarios were skipped, so this run can't be called a pass")
+        return 2
+    return 0
 
 
 if __name__ == "__main__":

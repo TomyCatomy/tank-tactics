@@ -1,14 +1,18 @@
 # Only `staging` is merged into `main` (see "Workspaces and branches" in CLAUDE.md).
-# The repo's GitHub plan has no branch protection or rulesets, so this workflow enforces it:
+# Rulesets can't limit which branch a pull request comes from, so this workflow enforces it:
 # - a pull request into `main` from any other branch is moved to target `staging`, with a comment;
-# - after `main` moves, `staging` is fast-forwarded to it, so the two stay identical.
+# - after `main` moves and CI has passed on it, `staging` is fast-forwarded to it, so the two stay
+#   identical. It waits for CI because the ruleset on `staging` only accepts commits whose
+#   tests, playtest and ui-inspection checks passed.
 name: Main from staging
 
 on:
   pull_request_target: # runs main's copy of this file and never checks out the PR's code
     types: [opened, reopened, edited, synchronize]
     branches: [main]
-  push:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
     branches: [main]
 
 permissions:
@@ -33,11 +37,15 @@ jobs:
             'Only `staging` can be merged into `main`, so this pull request now targets `staging`. To release, open a pull request from `staging` into `main`.'
 
   sync-staging:
-    if: github.event_name == 'push'
+    if: >-
+      github.event_name == 'workflow_run' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
         with:
+          ref: ${{ github.event.workflow_run.head_sha }} # the commit CI passed on, not main's tip now
           fetch-depth: 0
       - name: Fast-forward staging to main
         run: |

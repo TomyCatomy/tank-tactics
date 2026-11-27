@@ -14,6 +14,7 @@ away, junk text and JavaScript errors. Findings that the baseline also has are r
     ... inspect_ui.py --baseline b8801a6 --current 9e02bea --out <dir>   # replay an old regression
     ... inspect_ui.py --baseline none --out <dir>            # no comparison, current only
     ... inspect_ui.py --devices iphone,desktop --only lobby,game --out <dir>
+    ... inspect_ui.py --strict --out <dir>                   # CI: no WebKit is a harness error, not a fallback
 
 Writes <out>/report.md (read this first), <out>/report.json and <out>/<device>/<screen>.png comparisons.
 Exit code: 0 = no new findings, 1 = new findings, 2 = the harness could not run.
@@ -498,6 +499,7 @@ def main() -> int:
     ap.add_argument("--current", help="git ref to inspect instead of the working tree (e.g. to replay an old regression)")
     ap.add_argument("--devices", help=f"comma-separated subset of: {', '.join(DEVICES)}")
     ap.add_argument("--only", help=f"comma-separated subset of: {', '.join(GROUPS)}")
+    ap.add_argument("--strict", action="store_true", help="exit 2 instead of falling back to Chromium when WebKit is missing (for CI)")
     args = ap.parse_args()
 
     devices = [d.strip() for d in args.devices.split(",")] if args.devices else list(DEVICES)
@@ -570,7 +572,7 @@ def main() -> int:
                 except Exception:
                     browsers[engine] = (getattr(pw, engine).launch(), engine)
             except Exception as e:
-                if engine == "webkit":
+                if engine == "webkit" and not args.strict:
                     notes.append(f"WebKit unavailable ({str(e).splitlines()[0]}); iPhone devices ran in Chromium instead, so "
                                  "iOS-only problems can't show up. Fix with: .venv/Scripts/python -m playwright install webkit")
                     browsers[engine] = None

@@ -19,7 +19,7 @@ python -m venv .venv && .venv/Scripts/python -m pip install -r requirements-dev.
 .venv/Scripts/python -m pytest -q -m "not ui"         # skip the (slower) browser tests
 .venv/Scripts/python -m pyflakes tank_tactics scripts tests   # lint (pyflakes is not pinned in requirements)
 .venv/Scripts/python scripts/simulate.py --players 12 --runs 100 --quiet   # bot balance simulation
-# CI: .github/workflows/tests.yml runs the whole suite (browser tests included) on every push
+# CI: .github/workflows/tests.yml runs the suite, the full playtest and the UI inspection on every PR and push to staging/main
 # AWS deploy (EC2 + CloudFront): GitHub Actions > "AWS deploy" > Run workflow on main; see deploy/aws/README.md
 ```
 
@@ -70,8 +70,9 @@ A Python file is at most 150 lines unless there's a good reason for it to be lon
 ## Workspaces and branches
 
 - Each new feature request in a thread starts in its own workspace: before changing any files, create a separate git worktree checked out to a new feature branch (for example `feature/<short-name>`) based on the latest `origin/staging`, and do all the work for that request there. Never make feature changes on `main`, on `staging` or in the main checkout.
-- Feature pull requests target `staging`. Only `staging` is merged into `main`, through a pull request from `staging` into `main`. `.github/workflows/main-from-staging.yml` enforces this (the repo's plan has no branch protection): it moves any other pull request into `main` over to `staging`, and fast-forwards `staging` after every merge into `main` so the two stay identical.
+- Feature pull requests target `staging`. Only `staging` is merged into `main`, through a pull request from `staging` into `main`. `.github/workflows/main-from-staging.yml` enforces this (rulesets can't limit a pull request's source branch): it moves any other pull request into `main` over to `staging`, and once CI has passed on `main` after a merge, fast-forwards `staging` to it so the two stay identical.
 - Before merging any pull request (a feature into `staging`, or `staging` into `main`), test its branch with the playtest skill (`/playtest`, in `.claude/skills/playtest/`): the full playtest and the UI inspection, not `--quick`. Merge only if it reports **Safe to ship**, and put its verdict and the run's seed in the pull request. If it reports problems, fix them on the branch first, or ask the user before merging anyway. Out-of-date scenarios are fixed in the skill, never skipped.
+- CI (`.github/workflows/tests.yml`) runs the same checks on every pull request as three status checks, `tests`, `playtest` and `ui-inspection` (the UI one fails on layout findings that are new compared with the target branch; its screenshots are the `ui-report` artifact). All three must be green before merging. CI can't look at the screenshots, so it doesn't replace the playtest skill's verdict above. The "Merge gate" ruleset requires them on `staging` and `main`, so GitHub won't merge a pull request (or accept a push) whose commit hasn't passed them; renaming a job means updating the ruleset.
 - Follow-up fixes and tweaks to that feature stay in the same workspace and branch (and are folded in as described under Commits). A different, unrelated feature request in the same thread gets its own new workspace and branch.
 - The `.venv` is not shared with a new worktree: either create one there with the setup command above, or run the main checkout's interpreter by its absolute path from inside the worktree.
 
