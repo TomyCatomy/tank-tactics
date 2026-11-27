@@ -197,6 +197,7 @@ All state-changing requests use `Authorization: Bearer <player token>`.
 | `POST /api/games/{id}/action` | `{type: move, to:[x,y]}` · `{type: shoot, target_id}` · `{type: give_ap\|give_hp, target_id, amount}` · `{type: upgrade}` | |
 | `POST /api/games/{id}/vote` | `{candidate_id}` | jurors, jury enabled only |
 | `POST /api/games/{id}/chat` | `{to_id: null\|player_id, text}` | |
+| `POST /api/games/{id}/reset-link` | | replaces your seat token: every older copy (rejoin links, other devices, claimed tokens) stops working and its connections close; unlinks the seat from its account. Returns the new credentials |
 | `WS /ws/{id}` | first message `{type: auth, token}` | pushes `{type: state, state}` on every change |
 | `GET /api/auth/config` | | `{google_client_id, discord_connect}`; `null` / `false` when off |
 | `POST /api/games/{id}/discord/connect` | `{origin}` | host, lobby only; returns `{url}`, Discord's page to pick a channel. Discord sends the host back to `GET /api/discord/callback`, which saves the webhook |

@@ -223,3 +223,11 @@ Where the spec left room for interpretation, this is what I chose and why.
     move to Postgres; it was then removed as no longer needed (the deployed database was
     upgraded by it long before), so there are no schema upgrades. The one-seat-per-account
     unique index (`players_game_user`) is declared on the model instead.
+26. **Resetting a rejoin link rotates every token for the seat.** `reset-link` replaces the
+    original token, deletes claimed ones and closes the seat's sockets, so a leaked link,
+    or a device the player no longer has, loses access. It also unlinks the seat from its
+    account, because a link made with a leaked token (a signed-in stranger who opened it)
+    would otherwise let that account claim a fresh token. The client relinks the new token
+    when it is signed in, so a player resetting their own linked seat keeps the link.
+    Anyone holding a valid token can reset, as anyone holding one can already play the
+    tank: whoever resets first keeps the seat.

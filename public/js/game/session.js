@@ -21,6 +21,7 @@ export function startGame(gid) {
     state: null,        // the latest view from the server
     offset: 0,          // server clock minus ours, in seconds
     ws: null, retry: 0, reconnecting: false, stopped: false,
+    resetting: false,   // a link reset is in flight: the server is about to drop this socket
     layout: null,       // 'lobby' | 'match' | 'closed': which screen is built
     nodes: null,        // that screen's long-lived elements
     tab: 'me', lobbyTab: 'overview', selected: null, logFilter: '', replay: null,
@@ -47,7 +48,7 @@ function connect(session) {
   session.ws = ws;
   ws.onopen = () => ws.send(JSON.stringify({ type: 'auth', token: session.token }));
   ws.onmessage = (ev) => {
-    if (session.stopped) return;
+    if (session.stopped || session.ws !== ws) return;
     let msg;
     try { msg = JSON.parse(ev.data); } catch { return; }
     if (msg.type === 'state') {
@@ -56,6 +57,7 @@ function connect(session) {
       onState(msg.state);
       renderConnectionBadge();
     } else if (msg.type === 'error') {
+      if (session.resetting) return; // our own reset closing this socket; replaceToken reconnects
       session.stopped = true;
       if (saved.dropSeat(session.gid, session.token)) { route(); return; } // continue as another local seat
       $('#topbar-game').replaceChildren();
@@ -64,12 +66,32 @@ function connect(session) {
     }
   };
   ws.onclose = () => {
-    if (session.stopped) return;
+    if (session.stopped || session.ws !== ws || session.resetting) return;
     const wait = Math.min(15000, 500 * 2 ** session.retry++);
     session.reconnecting = true;
     renderConnectionBadge();
     setTimeout(() => { if (!session.stopped) connect(session); }, wait);
   };
+}
+
+/**
+ * Switch a session to a new seat token (after a link reset): remember it on this device, then, if
+ * the session is still open, reconnect with it. The old socket is ignored from here on.
+ */
+export function replaceToken(session, token) {
+  saved.replaceToken(session.gid, session.token, token);
+  session.token = token;
+  if (session === G) reconnectNow(session);
+}
+
+/** Drop the session's socket (if any) and open a fresh one with its current token. */
+export function reconnectNow(session) {
+  const old = session.ws;
+  session.ws = null;
+  session.resetting = false;
+  session.retry = 0;
+  try { old?.close(); } catch { }
+  if (!session.stopped) connect(session);
 }
 
 /** Re-fetch over HTTP (used right after an action so the UI never waits on the socket). */
