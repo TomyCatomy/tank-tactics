@@ -11,6 +11,7 @@ from typing import Any
 from tank_tactics import game
 from tank_tactics.api.google import GoogleIdentity, InvalidGoogleToken
 from tank_tactics.config import GameConfig, ServerConfig
+from tank_tactics.database import make_engine
 from tank_tactics.service import GameService
 from tank_tactics.store import Store
 
@@ -76,7 +77,7 @@ def make_service(path: str = ":memory:", clock: Clock | None = None, **server_cf
     """A GameService on SQLite (in memory by default) with a fake clock and seeded RNG."""
     clock = clock or Clock()
     server_cfg.setdefault("allow_debug", True)  # tests use debug options; pass False to test the lock
-    svc = GameService(Store(path), ServerConfig(**server_cfg), clock=clock, rng=random.Random(42))
+    svc = GameService(Store(make_engine(path)), ServerConfig(**server_cfg), clock=clock, rng=random.Random(42))
     return svc, clock
 
 

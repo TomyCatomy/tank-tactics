@@ -15,8 +15,7 @@ from ..support import DAY, T0, make_service, place, setup_game
 
 # 6. Tick catch-up across a real restart -----------------------------------------
 
-def test_ap_catch_up_after_restart(tmp_path):
-    db = str(tmp_path / "t.db")
+def test_ap_catch_up_after_restart(db):
     svc, clock = make_service(db)
     gid, ids, _ = setup_game(svc)
     svc.store.close()
@@ -35,8 +34,7 @@ def test_ap_catch_up_after_restart(tmp_path):
     assert len([e for e in svc3.games[gid].log if e.event_type == "ap_tick"]) == 3
 
 
-def test_full_state_round_trips_through_db(tmp_path):
-    db = str(tmp_path / "t.db")
+def test_full_state_round_trips_through_db(db):
     svc, clock = make_service(db)
     gid, (a, b, c), players = setup_game(svc, config={"jury": {"enabled": True}, "fog_of_war": "alliance"})
     place(svc, gid, {a: (0, 0), b: (1, 1), c: (9, 9)})
@@ -159,8 +157,7 @@ def test_lobby_removal_revokes_token():
     assert e.value.status == 401
 
 
-def test_host_updates_lobby_config_and_it_persists(tmp_path):
-    db = str(tmp_path / "t.db")
+def test_host_updates_lobby_config_and_it_persists(db):
     svc, clock = make_service(db)
     host = svc.create_game("Ann")
     gid = host["game_id"]
@@ -186,8 +183,7 @@ def test_act_validates_raw_payloads():
     assert game.get_player(svc.games[gid], b).ap == 2
 
 
-def test_leave_revokes_token_and_close_persists(tmp_path):
-    db = str(tmp_path / "t.db")
+def test_leave_revokes_token_and_close_persists(db):
     svc, clock = make_service(db)
     host = svc.create_game("Ann")
     gid = host["game_id"]
@@ -231,8 +227,7 @@ def _finish(svc, gid, a, b):
     svc.act(gid, a, {"type": "shoot", "target_id": b})
 
 
-def test_finished_game_is_evicted_but_still_served(tmp_path):
-    db = str(tmp_path / "t.db")
+def test_finished_game_is_evicted_but_still_served(db):
     svc, clock = make_service(db)
     gid, (a, b), creds = setup_game(svc, names=("Ann", "Bob"))
     svc.send_message(gid, a, None, "gg")
@@ -283,8 +278,7 @@ def test_unknown_game_is_not_found():
 
 # -- AP schedule (RRULE) across restarts ---------------------------------------------------------
 
-def test_rrule_catch_up_after_long_restart_is_collapsed(tmp_path):
-    db = str(tmp_path / "t.db")
+def test_rrule_catch_up_after_long_restart_is_collapsed(db):
     svc, clock = make_service(db)
     gid, _, _ = setup_game(svc, config={"ap": {"rrule": "FREQ=DAILY;BYHOUR=9;BYMINUTE=0", "timezone": "Asia/Jerusalem"}})
     sched = game.schedule_of(svc.games[gid])

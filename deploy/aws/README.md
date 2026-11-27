@@ -157,6 +157,35 @@ parameters below exist.
 
 Setting only one of the two fails the deploy before the restart. To turn it off, delete
 both and `redeploy`; games that already have a webhook keep posting.
+## Database: Neon Postgres (optional)
+
+By default the server keeps its games in a SQLite file on the instance's disk. With both
+parameters below, it uses the Neon Postgres project instead: `Tank tactics prod`
+(`autumn-mouse-33994899`, branch `production`), in `aws-eu-central-1` (Frankfurt), the
+Neon region closest to this server. The repo's Neon config is in [`neon/`](../../neon/README.md).
+
+1. From the repo root, with the Neon CLI signed in (`neon login`) and the repo linked
+   (`neon link --project-id autumn-mouse-33994899 --branch production`), run
+   `neon deploy --config neon/neon.ts`. It writes `DATABASE_URL` (pooled, host with
+   `-pooler`) and `DATABASE_URL_UNPOOLED` (direct) to `.env.local`.
+2. Store both in SSM. They hold the database password, so both are `SecureString`s:
+
+   ```bash
+   aws ssm put-parameter --profile tank-tactics --region eu-north-1 --type SecureString \
+     --name /tank-tactics/database-url --value '<DATABASE_URL>'
+   aws ssm put-parameter --profile tank-tactics --region eu-north-1 --type SecureString \
+     --name /tank-tactics/database-url-unpooled --value '<DATABASE_URL_UNPOOLED>'
+   ```
+
+   Add `--overwrite` to replace existing values, for example after resetting the
+   password in Neon.
+3. Run `redeploy`. Its log says `Database: Postgres at <host>` (or `SQLite file`); the
+   password is never printed.
+
+Setting only one of the two, or values that aren't Neon's pooled and direct postgres URLs,
+fails the deploy before the restart. Switching moves no data: games already in the SQLite
+file stay there and aren't loaded, and switching back (delete both parameters and
+`redeploy`) brings them back. The server creates its tables in Neon on first start.
 
 ## Why this shape
 
@@ -173,7 +202,7 @@ browser --HTTPS/WSS--> CloudFront (tanktactics.io, caching off)
 |---|---|
 | Foundation | [`github-access.yaml`](github-access.yaml): stays in place across `up` and `down` |
 | Instance | Amazon Linux 2023 (arm64), CPU credits `standard`, IMDSv2 required, 10 GB encrypted gp3 |
-| Boot | [`userdata.sh`](userdata.sh): settings from SSM, Python venv, `/usr/local/bin/tank-tactics-deploy`, systemd unit `tank-tactics`, database at `/var/lib/tank-tactics/tank-tactics.db` |
+| Boot | [`userdata.sh`](userdata.sh): settings from SSM, Python venv, `/usr/local/bin/tank-tactics-deploy`, systemd unit `tank-tactics`, database at `/var/lib/tank-tactics/tank-tactics.db`, or in Neon Postgres when the `/tank-tactics/database-url*` parameters exist |
 | Access | No SSH or key pair; commands go through AWS Systems Manager |
 | Network | Default VPC. TCP 8080 is open only to the CloudFront origin-facing prefix list |
 | Backups | Daily 03:00 UTC snapshots of volumes tagged `backup=daily`, keep 7 |
