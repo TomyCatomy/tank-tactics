@@ -113,6 +113,7 @@ button.help-tip:hover .help-tip-icon, button.help-tip:focus-visible .help-tip-ic
 /* Signed out: a centered hint and Google's button, without a card around them. */
 .account-signin { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; }
 .account-signin p { margin: 0; }
+.join-google { border-top: 1px solid var(--line); padding-top: 12px; }
 /* Google's button is a cross-origin iframe. Under the page's dark color-scheme the browser
    paints an opaque white backdrop behind it; `normal` keeps it transparent. */
 .gsi-button { color-scheme: normal; min-height: 32px; }

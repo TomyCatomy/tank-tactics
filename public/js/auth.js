@@ -12,20 +12,24 @@ const loadGoogleScript = once(() => new Promise((resolve, reject) => {
   document.head.append(s);
 }));
 
-async function onCredential(resp) {
+async function onCredential(resp, onSignedIn) {
+  let res;
   try {
-    const res = await api('POST', '/api/auth/google', { credential: resp.credential });
-    account.set({ token: res.token, user: res.user });
-    toast(`Signed in as ${res.user.name}`, 'good');
-    route();
-  } catch (e) { toast(e.message, 'error'); }
+    res = await api('POST', '/api/auth/google', { credential: resp.credential });
+  } catch (e) { toast(e.message, 'error'); return; }
+  account.set({ token: res.token, user: res.user });
+  toast(`Signed in as ${res.user.name}`, 'good');
+  await (onSignedIn ? onSignedIn(res.user) : route());
 }
 
-/** Render Google's sign-in button into `el`; signing in stores the session and re-renders. */
-export async function mountGoogleButton(el, clientId) {
+/**
+ * Render Google's sign-in button into `el`. Signing in stores the session, then runs `onSignedIn(user)`
+ * if given, or re-renders the page.
+ */
+export async function mountGoogleButton(el, clientId, onSignedIn) {
   try {
     const google = await loadGoogleScript();
-    google.accounts.id.initialize({ client_id: clientId, callback: onCredential });
+    google.accounts.id.initialize({ client_id: clientId, callback: (resp) => onCredential(resp, onSignedIn) });
     // The standard dark pill, in English like the rest of the site. `medium` matters: at `large`, Google swaps in its
     // personalized "Sign in as <name>" button whenever the browser has a Google session.
     google.accounts.id.renderButton(el, { type: 'standard', theme: 'filled_black', shape: 'pill', size: 'medium', text: 'signin_with', locale: 'en' });
