@@ -1,5 +1,5 @@
 // Toasts, browser notifications and the bottom action sheet.
-import { $, h } from './dom.js';
+import { $, h, morph } from './dom.js';
 
 export function toast(text, kind = 'info', ms = 4000) {
   const el = h('div', { class: `toast ${kind}` }, text);
@@ -34,16 +34,37 @@ export function copyRow(label, value) {
 
 const escClose = (e) => { if (e.key === 'Escape') closeSheet(); };
 
+/** The open sheet's content builder, when it was opened with one (see refreshSheet). */
+let build = null;
+
 export function closeSheet() {
+  build = null;
   $('#sheet-root')?.replaceChildren();
   document.removeEventListener('keydown', escClose);
 }
 
+/**
+ * Open the sheet. `content` is its nodes, or a single function returning them: such a sheet is
+ * rebuilt by refreshSheet() whenever the game state changes, so it never shows stale AP or buttons.
+ */
 export function openSheet(...content) {
-  const sheet = h('div', { class: 'sheet', role: 'dialog', 'aria-modal': 'true' }, ...content,
-    h('div', { style: { marginTop: '12px' } }, h('button', { class: 'ghost', style: { width: '100%' }, onclick: closeSheet }, 'Close')));
+  build = content.length === 1 && typeof content[0] === 'function' ? content[0] : null;
+  const sheet = sheetEl(build ? build() : content);
   const backdrop = h('div', { class: 'sheet-backdrop', onclick: (e) => { if (e.target === backdrop) closeSheet(); } }, sheet);
   $('#sheet-root').replaceChildren(backdrop);
   document.addEventListener('keydown', escClose);
   sheet.querySelector('button:not(:disabled), input')?.focus();
+}
+
+const sheetEl = (content) => h('div', { class: 'sheet', role: 'dialog', 'aria-modal': 'true' }, content,
+  h('div', { style: { marginTop: '12px' } }, h('button', { class: 'ghost', style: { width: '100%' }, onclick: closeSheet }, 'Close')));
+
+/**
+ * Update a sheet opened with a builder to the latest state. It is morphed in place rather than
+ * replaced, so what was typed, the focus (and a phone's keyboard) and the scroll position survive.
+ */
+export function refreshSheet() {
+  const sheet = $('#sheet-root .sheet');
+  if (!build || !sheet) return;
+  morph(sheet, sheetEl(build()));
 }
