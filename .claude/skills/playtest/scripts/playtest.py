@@ -59,8 +59,8 @@ def merge(*dicts: dict) -> dict:
 
 
 def dist(a, b) -> int:
-    """Step (Chebyshev) distance: movement."""
-    return max(abs(a[0] - b[0]), abs(a[1] - b[1]))
+    """Step (Manhattan) distance: moves are orthogonal only, so 1 means adjacent."""
+    return abs(a[0] - b[0]) + abs(a[1] - b[1])
 
 
 def dist2(a, b) -> int:
@@ -239,7 +239,7 @@ class T:
             goals = [(x, y) for x in range(n) for y in range(n) if metric((x, y), b) == d and (x, y) not in blocked]
             self.must(goals, "walk: no free tile at that distance")
             goal = min(goals, key=lambda t: dist(t, a))
-            options = [(a[0] + dx, a[1] + dy) for dx in (-1, 0, 1) for dy in (-1, 0, 1) if dx or dy]
+            options = [(a[0] + dx, a[1] + dy) for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1))]
             options = [t for t in options if 0 <= t[0] < n and 0 <= t[1] < n and t not in blocked]
             self.must(options, "walk: tank is boxed in")
             best = min(options, key=lambda t: (dist(t, goal), dist2(t, goal)))
@@ -431,9 +431,12 @@ def move_rules(t: T):
     for off in ([-1, 0], [0, -1], [12, 0], [0, 12], [10**30, 0]):
         t.err(t.act(a, "move", to=off), 400, "out_of_bounds", f"move off board {off}")
     t.eq(t.tank(a)["ap"], me["ap"], "rejected moves cost nothing")
-    free = [(me["x"] + dx, me["y"] + dy) for dx, dy in ((1, 1), (-1, -1), (1, -1), (-1, 1))
+    diag = [(me["x"] + dx, me["y"] + dy) for dx, dy in ((1, 1), (-1, -1), (1, -1), (-1, 1))
             if 0 <= me["x"] + dx < 12 and 0 <= me["y"] + dy < 12 and (me["x"] + dx, me["y"] + dy) != (o["x"], o["y"])]
-    t.good(t.act(a, "move", to=list(free[0])), "diagonal move")
+    t.err(t.act(a, "move", to=list(diag[0])), 400, "not_adjacent", "diagonal move")
+    free = [(me["x"] + dx, me["y"] + dy) for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1))
+            if 0 <= me["x"] + dx < 12 and 0 <= me["y"] + dy < 12 and (me["x"] + dx, me["y"] + dy) != (o["x"], o["y"])]
+    t.good(t.act(a, "move", to=list(free[0])), "orthogonal move")
     after = t.tank(a)
     t.eq(((after["x"], after["y"]), after["ap"]), (free[0], me["ap"] - 1), "move changes tile and costs 1 AP")
     entry = t.view(b)["log"][-1]
@@ -1396,8 +1399,8 @@ def play_a_whole_game_in_the_ui(t: T):
         # move
         ax, ay = at(a)
         blocked = {at(s) for s in (a, b, c)}
-        tile = next((ax + dx, ay + dy) for dx in (-1, 0, 1) for dy in (-1, 0, 1)
-                    if (dx or dy) and 0 <= ax + dx < 6 and 0 <= ay + dy < 6 and (ax + dx, ay + dy) not in blocked)
+        tile = next((ax + dx, ay + dy) for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1))
+                    if 0 <= ax + dx < 6 and 0 <= ay + dy < 6 and (ax + dx, ay + dy) not in blocked)
         tap_tile(pa, *tile)
         press(pa, "Move")
         t.wait(lambda: at(a) == tile, 5, "move from the UI")

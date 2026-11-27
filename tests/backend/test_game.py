@@ -45,10 +45,10 @@ def test_range_is_straight_line_distance():
 
 def test_move_success_costs_one_ap():
     s = make_active({"a": (0, 0), "b": (5, 5)})
-    entries = game.move(s, "a", [1, 1], T0)
-    assert p(s, "a").pos == (1, 1)
+    entries = game.move(s, "a", [1, 0], T0)
+    assert p(s, "a").pos == (1, 0)
     assert p(s, "a").ap == 0
-    assert entries[0].event_type == "move" and entries[0].from_xy == (0, 0) and entries[0].to_xy == (1, 1)
+    assert entries[0].event_type == "move" and entries[0].from_xy == (0, 0) and entries[0].to_xy == (1, 0)
 
 
 def test_move_rejected_if_occupied():
@@ -73,6 +73,16 @@ def test_move_rejected_non_adjacent_or_same_tile():
         game.move(s, "a", [2, 0], T0)
     with err("not_adjacent"):
         game.move(s, "a", [0, 0], T0)
+
+
+def test_move_rejected_diagonally():
+    s = make_active({"a": (3, 3), "b": (8, 8)})
+    for to in ([4, 4], [2, 2], [4, 2], [2, 4]):
+        with err("not_adjacent"):
+            game.move(s, "a", to, T0)
+    assert p(s, "a").pos == (3, 3) and p(s, "a").ap == 1
+    game.move(s, "a", [3, 4], T0)
+    assert p(s, "a").pos == (3, 4)
 
 
 def test_move_rejected_with_zero_ap():
@@ -431,8 +441,8 @@ def _fog_scenario(fog: str):
     game.give_hp(s, "c", "b", 1, T0)
     p(s, "d").ap = 4
     p(s, "c").hp = 1
-    game.move(s, "d", [8, 8], T0)
-    p(s, "d").action_range = 4  # (8, 8) to (6, 5) is sqrt(13) away
+    game.move(s, "d", [9, 8], T0)
+    p(s, "d").action_range = 5  # (9, 8) to (6, 5) is sqrt(18) away
     game.shoot(s, "d", "c", T0)  # D kills C and loots
     game.advance_time(s, T0 + DAY, random.Random(0))
     return s

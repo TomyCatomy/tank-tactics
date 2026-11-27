@@ -1,6 +1,6 @@
 // The SVG board. Tap a tank to open its action sheet, or a free tile next to yours to move.
 import { h, sv } from '../dom.js';
-import { dist, initials, neighbours } from '../format.js';
+import { adjacent, initials, neighbours } from '../format.js';
 import { G, byId, me } from './session.js';
 import { openMoveSheet, openSelfSheet, openTargetSheet } from './sheets.js';
 
@@ -24,7 +24,7 @@ function onTileTap(x, y) {
   const tank = st.players.find((p) => p.alive && p.x === x && p.y === y);
   if (tank) return selectPlayer(tank);
   const free = !st.players.some((p) => p.x === x && p.y === y && blocksTile(p, st.game.config));
-  if (my?.alive && st.game.status === 'active' && free && dist(my, { x, y }) === 1) return openMoveSheet(x, y);
+  if (my?.alive && st.game.status === 'active' && free && adjacent(my, { x, y })) return openMoveSheet(x, y);
   G.selected = null;
   renderBoard();
 }

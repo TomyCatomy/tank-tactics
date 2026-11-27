@@ -7,9 +7,14 @@ from .state import GameError, GameState, Player
 
 
 def distance(a: tuple[int, int], b: tuple[int, int]) -> int:
-    """Chebyshev (step) distance, used for movement and start spacing: diagonal steps
-    count the same as orthogonal ones. Range uses ``range_distance`` instead."""
+    """Chebyshev (step) distance, used for start spacing: diagonal steps count the same
+    as orthogonal ones. Movement uses ``adjacent``, range ``range_distance``."""
     return max(abs(a[0] - b[0]), abs(a[1] - b[1]))
+
+
+def adjacent(a: tuple[int, int], b: tuple[int, int]) -> bool:
+    """Whether b is one orthogonal step from a (up, down, left or right; no diagonals)."""
+    return abs(a[0] - b[0]) + abs(a[1] - b[1]) == 1
 
 
 def range_distance(a: tuple[int, int], b: tuple[int, int]) -> float:
