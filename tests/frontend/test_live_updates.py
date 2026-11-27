@@ -59,3 +59,32 @@ def test_phone_chat_keeps_focus_through_ap_ticks(server, browser):
         assert box.input_value() == "half a messa"
     finally:
         page.context.close()
+
+
+def test_open_sheet_follows_new_ap(server, page):
+    host, _ = create_game(server, config=FAST)
+    start(server, host)
+    open_as(page, server, host)
+    page.get_by_text("Players", exact=True).click()
+    page.locator(".plist li", has_text="(you)").click()
+    upgrade = page.locator(".sheet").get_by_role("button", name="Upgrade range")
+    assert upgrade.is_disabled()  # you start with 0 AP and it costs 3
+    upgrade.wait_for(state="attached")
+    wait_for_ticks(server, host, 3)
+    page.wait_for_function("() => !document.querySelector('.sheet .act button').disabled", timeout=5_000)
+    assert "Needs" not in page.locator(".sheet").inner_text()
+
+
+def test_open_sheet_keeps_typed_amount_and_focus(server, page):
+    host, _ = create_game(server, config=FAST)
+    start(server, host)
+    open_as(page, server, host)
+    page.get_by_text("Players", exact=True).click()
+    page.locator(".plist li", has_text="Bob").click()
+    amount = page.get_by_label("AP amount")
+    amount.fill("2")
+    amount.focus()
+    before = page.locator(".sheet").inner_text()
+    page.wait_for_function("t => document.querySelector('.sheet').innerText !== t", arg=before, timeout=15_000)
+    assert amount.input_value() == "2"
+    assert amount.evaluate("el => el === document.activeElement")

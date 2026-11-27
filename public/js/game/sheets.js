@@ -47,30 +47,40 @@ function actRow(label, cost, why, onclick, extra = null) {
 
 const amountInput = (what) => wholeNumberInput({ class: 'amount', min: 1, value: 1, 'aria-label': `${what} amount` });
 
+// Each sheet is opened with a builder, so it is redrawn from every new state (AP arriving, a target moving).
+
 export function openMoveSheet(x, y) {
-  const my = me();
-  openSheet(h('h2', {}, `Move to (${x}, ${y})`),
-    h('p', { class: 'muted' }, `From (${my.x}, ${my.y}). Moves cost 1 AP each.`),
-    actRow('Move', '1 AP', blockers({ cost: 1 }), () => doAction({ type: 'move', to: [x, y] })));
+  openSheet(() => {
+    const my = me();
+    return [h('h2', {}, `Move to (${x}, ${y})`),
+      h('p', { class: 'muted' }, `From (${my.x}, ${my.y}). Moves cost 1 AP each.`),
+      actRow('Move', '1 AP', blockers({ cost: 1 }), () => doAction({ type: 'move', to: [x, y] }))];
+  });
 }
 
 export function openSelfSheet() {
-  const my = me(), cost = G.state.game.config.actions.range_upgrade_cost;
-  openSheet(h('h2', {}, dot(my.color), `${my.name} (you)`),
-    h('p', { class: 'muted' }, `HP ${my.hp} · AP ${my.ap} · Range ${my.action_range}. Tap a highlighted tile next to you to move.`),
-    actRow('Upgrade range', `${cost} AP → range ${my.action_range + 1}`, upgradeBlocker(), () => doAction({ type: 'upgrade' })));
+  openSheet(() => {
+    const my = me(), cost = G.state.game.config.actions.range_upgrade_cost;
+    return [h('h2', {}, dot(my.color), `${my.name} (you)`),
+      h('p', { class: 'muted' }, `HP ${my.hp} · AP ${my.ap} · Range ${my.action_range}. Tap a highlighted tile next to you to move.`),
+      actRow('Upgrade range', `${cost} AP → range ${my.action_range + 1}`, upgradeBlocker(), () => doAction({ type: 'upgrade' }))];
+  });
 }
 
 export function openTargetSheet(id) {
+  if (byId(id)) openSheet(() => targetSheet(id));
+}
+
+function targetSheet(id) {
   const st = G.state, t = byId(id), my = me();
-  if (!t) return;
+  if (!t) return [];
   const d = my && my.x >= 0 ? rangeDist(my, t) : null;
   const apIn = amountInput('AP'), hpIn = amountInput('HP');
   const rangeBlocker = blockers({ cost: 1, target: t, needRange: true });
   const removePlayer = async () => {
     if (confirm(`Remove ${t.name}? Their tank will be destroyed.`) && await post('remove', { player_id: t.id })) { closeSheet(); refresh(); }
   };
-  openSheet(
+  return [
     h('h2', {}, dot(t.color), t.name),
     h('p', { class: 'muted' }, `HP ${t.hp} · Range ${t.action_range}`, t.ap !== undefined ? ` · AP ${t.ap}` : '', d !== null ? ` · distance ${fmtDist(d)}` : '',
       my && d !== null && inRange(t, my, t.action_range) ? ' · you are in their range' : ''),
@@ -83,5 +93,5 @@ export function openTargetSheet(id) {
       h('button', { onclick: () => { closeSheet(); openDm(t.id); } }, 'Open DM')) : null,
     my?.is_host && st.game.status === 'active' ? h('div', { class: 'act' },
       h('div', { class: 'why' }, 'Host: removing a player destroys their tank.'),
-      h('button', { class: 'danger small', onclick: removePlayer }, 'Remove player')) : null);
+      h('button', { class: 'danger small', onclick: removePlayer }, 'Remove player')) : null];
 }
