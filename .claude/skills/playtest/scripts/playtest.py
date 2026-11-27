@@ -446,6 +446,12 @@ def discord_connect_round_trip(t: T):
     t.eq(back(error="access_denied", state=q["state"]), f"/?discord=cancelled#/g/{h.game_id}", "cancelled on Discord")
     t.eq(back(code="x", state=q["state"]), "/?discord=expired#/", "a used state is refused")
     t.eq(back(code="x", state="made-up"), "/?discord=expired#/", "an unknown state is refused")
+    # The link only works in the browser that started it (the connect request set a cookie).
+    q2 = dict(urllib.parse.parse_qsl(urllib.parse.urlparse(t.good(t.post(h, "discord/connect", origin),
+                                                                   "host starts again").json()["url"]).query))
+    with httpx.Client(base_url=t.srv.url, trust_env=False) as other:
+        r = other.get("/api/discord/callback", params={"code": "x", "state": q2["state"]}, follow_redirects=False)
+    t.eq(r.headers.get("location"), "/?discord=expired#/", "a link opened in another browser is refused")
     t.eq(t.view(h)["game"]["config"]["notifications"]["discord_webhook_url"], None, "nothing was saved")
     t.good(t.post(h, "start"), "start")
     t.err(t.post(h, "discord/connect", origin), 400, "not_lobby", "connecting after the start")

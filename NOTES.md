@@ -75,6 +75,9 @@ Where the spec left room for interpretation, this is what I chose and why.
     `webhook.incoming` flow: Discord shows a server and channel picker and creates the
     webhook). Like every setting it is lobby-only. The OAuth `state` is single-use and
     expires after 10 minutes, and Discord only redirects to the app's registered URLs.
+    The state is also bound to the browser that started it, through an HttpOnly cookie
+    sent only to the callback, so a host can't send the Discord link to someone else and
+    get their channel. Only the latest attempt per browser works.
     Pasting a URL still works as a fallback. Pending attempts live in memory, so a
     restart mid-way just means clicking the button again.
 
