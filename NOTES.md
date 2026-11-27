@@ -13,7 +13,8 @@ Where the spec left room for interpretation, this is what I chose and why.
 2. **Starting spacing.** "Not within distance 2 of another tank" means Chebyshev
    distance ≥ 3. The fallback "relax to distance 1" means ≥ 2, and the last fallback
    allows any free tile. Placement is randomised greedy with 50 attempts per level.
-   (Spacing and movement stay on step distance; only range is straight-line, see 36.)
+   (Spacing stays on step distance; range is straight-line, see 36, and moves are
+   orthogonal only, see 37.)
 3. **`ap.cap` applies to every AP gain**, not just ticks: loot, gifts and jury awards
    too. Any excess is lost. A gift that runs into the cap still costs the giver the full
    amount; the entry records how much arrived, and only the two participants can see it.
@@ -176,6 +177,12 @@ Where the spec left room for interpretation, this is what I chose and why.
     starting spacing (2) still uses step (Chebyshev) distance. Out-of-range errors show
     the distance to one decimal. With the longer reach of a disc this size, the defaults
     moved to range 3 and an auto board of at least 12×12.
+
+## Movement
+
+37. **No diagonal moves**, the owner's call: a move goes to one of the 4 orthogonal
+    neighbours (`|dx| + |dy| = 1`); anything else is `not_adjacent`. This replaces the
+    8-neighbour moves in 36. Start spacing still uses step (Chebyshev) distance.
 
 ## Not built (optional or out of scope for v1)
 

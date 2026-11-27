@@ -68,7 +68,7 @@ def test_websocket_pushes_redacted_state(api):
         pushed = ws.receive_json()
         assert "give_ap" not in json.dumps(pushed)
 
-        client.post(f"/api/games/{gid}/action", headers=auth(cat), json={"type": "move", "to": [7, 7]})
+        client.post(f"/api/games/{gid}/action", headers=auth(cat), json={"type": "move", "to": [7, 6]})
         pushed = ws.receive_json()
         assert any(e["event_type"] == "move" for e in pushed["state"]["log"])
 

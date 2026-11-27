@@ -33,7 +33,7 @@ class _Command(BaseModel):
 
 class MoveCommand(_Command):
     type: Literal[ActionType.MOVE]
-    to: tuple[StrictInt, StrictInt] = Field(description="Destination tile [x, y]; must be adjacent.")
+    to: tuple[StrictInt, StrictInt] = Field(description="Destination tile [x, y]; must be orthogonally adjacent.")
 
     def apply(self, state: GameState, actor_id: str, now: float) -> list[LogEntry]:
         return move(state, actor_id, self.to, now)

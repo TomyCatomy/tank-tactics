@@ -13,7 +13,7 @@ Be the **last tank standing**.
 - **Range** is measured in a straight line from tile centre to tile centre. A tank 3
   across is at distance 3, but a tank 2 across and 2 down is at distance 2.8, so range 2
   doesn't reach it. When you select a tank, the board shades the tiles it can reach.
-- **Moving** is one step to any of the 8 surrounding tiles, diagonals included.
+- **Moving** is one step up, down, left or right. No diagonal moves.
 - There are no walls and no line of sight. You can shoot "through" other tanks.
   **Range is the only limit.**
 
