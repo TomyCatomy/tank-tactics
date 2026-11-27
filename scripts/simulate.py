@@ -117,7 +117,7 @@ class Bot:
 
     def _flee(self, s: game.GameState, me: game.Player, threats: list[game.Player], now: float) -> bool:
         def danger(t):
-            return sum(1 for p in threats if game.distance(t, p.pos) <= p.action_range)
+            return sum(1 for p in threats if game.range_distance(t, p.pos) <= p.action_range)
 
         options = self._neighbors(s, me)
         if not options:

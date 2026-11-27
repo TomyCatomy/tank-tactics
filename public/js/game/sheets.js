@@ -1,7 +1,7 @@
 // Action sheets: move, upgrade (your own tank) and shoot / give / DM (another tank).
 // The buttons are disabled with a reason when an action looks impossible; the server re-checks everything.
 import { dot, h } from '../dom.js';
-import { dist } from '../format.js';
+import { fmtDist, inRange, rangeDist } from '../format.js';
 import { closeSheet, openSheet } from '../notify.js';
 import { openDm } from './match.js';
 import { G, byId, me, post, refresh } from './session.js';
@@ -18,7 +18,9 @@ export function blockers({ cost = 0, target = null, needRange = false } = {}) {
   if (!my) return 'You are not in this game';
   if (!my.alive) return 'Your tank is destroyed';
   if (target && !target.alive) return 'Target is destroyed';
-  if (needRange && target && dist(my, target) > my.action_range) return `Out of range (distance ${dist(my, target)}, your range ${my.action_range})`;
+  if (needRange && target && !inRange(my, target, my.action_range)) {
+    return `Out of range (distance ${fmtDist(rangeDist(my, target))}, your range ${my.action_range})`;
+  }
   if (cost && my.ap < cost) return `Needs ${cost} AP (you have ${my.ap})`;
   return null;
 }
@@ -62,7 +64,7 @@ export function openSelfSheet() {
 export function openTargetSheet(id) {
   const st = G.state, t = byId(id), my = me();
   if (!t) return;
-  const d = my && my.x >= 0 ? dist(my, t) : null;
+  const d = my && my.x >= 0 ? rangeDist(my, t) : null;
   const apIn = amountInput('AP'), hpIn = amountInput('HP');
   const inRange = blockers({ cost: 1, target: t, needRange: true });
   const removePlayer = async () => {
@@ -70,8 +72,8 @@ export function openTargetSheet(id) {
   };
   openSheet(
     h('h2', {}, dot(t.color), t.name),
-    h('p', { class: 'muted' }, `HP ${t.hp} · Range ${t.action_range}`, t.ap !== undefined ? ` · AP ${t.ap}` : '', d !== null ? ` · distance ${d}` : '',
-      my && d !== null && d <= t.action_range ? ' · you are in their range' : ''),
+    h('p', { class: 'muted' }, `HP ${t.hp} · Range ${t.action_range}`, t.ap !== undefined ? ` · AP ${t.ap}` : '', d !== null ? ` · distance ${fmtDist(d)}` : '',
+      my && d !== null && inRange(t, my, t.action_range) ? ' · you are in their range' : ''),
     actRow('Shoot', '1 AP · 1 damage', inRange, () => doAction({ type: 'shoot', target_id: t.id })),
     actRow('Give AP', 'costs the AP you give', inRange,
       () => doAction({ type: 'give_ap', target_id: t.id, amount: Number(apIn.value) }), apIn),
