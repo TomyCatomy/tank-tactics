@@ -191,23 +191,10 @@ jobs:
           echo "Site URL: https://$domain"
           echo "### Up: https://$domain" >> "$GITHUB_STEP_SUMMARY"
 
-      # Servers from before the origin used HTTPS get its port and DNS name here. Both are
-      # idempotent, and nothing listens on the port until the code below restarts the app.
-      - name: Open the HTTPS origin
+      # Servers from before the origin used HTTPS get its DNS name here (idempotent).
+      - name: Name the origin
         if: env.ACTION == 'redeploy' && steps.target.outputs.skip != 'true'
         run: |
-          sg=$(aws ec2 describe-security-groups --filters "Name=group-name,Values=$SG_NAME" "Name=tag:app,Values=$APP" \
-            --query 'SecurityGroups[0].GroupId' --output text)
-          prefix_list=$(aws ec2 describe-managed-prefix-lists \
-            --filters Name=prefix-list-name,Values=com.amazonaws.global.cloudfront.origin-facing \
-            --query 'PrefixLists[0].PrefixListId' --output text)
-          open=$(aws ec2 describe-security-groups --group-ids "$sg" --output json |
-            jq --argjson p "$ORIGIN_PORT" '[.SecurityGroups[0].IpPermissions[] | select(.FromPort == $p)] | length')
-          if [ "$open" = 0 ]; then
-            aws ec2 authorize-security-group-ingress --group-id "$sg" --ip-permissions \
-              "IpProtocol=tcp,FromPort=$ORIGIN_PORT,ToPort=$ORIGIN_PORT,PrefixListIds=[{PrefixListId=$prefix_list,Description=CloudFront origin-facing}]" \
-              >/dev/null
-          fi
           ip=$(aws ec2 describe-addresses --filters "Name=tag:app,Values=$APP" --query 'Addresses[0].PublicIp' --output text)
           deploy/aws/domain.sh origin "$ip"
 
@@ -261,22 +248,35 @@ jobs:
             echo "### Site: https://$d" >> "$GITHUB_STEP_SUMMARY"
           done
 
-      - name: Attach domain
-        if: env.ACTION == 'up' || (env.ACTION == 'redeploy' && steps.target.outputs.skip != 'true')
-        run: deploy/aws/domain.sh attach
-
-      # Servers from before the origin used HTTPS also had plain HTTP open on 8080.
-      - name: Close the old HTTP port
+      # Servers from before the origin used HTTPS had plain HTTP open on 8080. A rule from
+      # CloudFront's prefix list counts as about 55 of a security group's 60 rules, so 8080
+      # must close before ORIGIN_PORT can open. Doing it here, after the restart above (the
+      # app no longer listens on 8080) and before CloudFront moves over, adds no downtime,
+      # and a failed certificate or restart leaves the old setup untouched.
+      - name: Open the HTTPS origin port
         if: env.ACTION == 'redeploy' && steps.target.outputs.skip != 'true'
         run: |
           sg=$(aws ec2 describe-security-groups --filters "Name=group-name,Values=$SG_NAME" "Name=tag:app,Values=$APP" \
             --query 'SecurityGroups[0].GroupId' --output text)
-          old=$(aws ec2 describe-security-groups --group-ids "$sg" --output json |
-            jq -c '[.SecurityGroups[0].IpPermissions[] | select(.FromPort == 8080)]')
+          rules=$(aws ec2 describe-security-groups --group-ids "$sg" --output json | jq '.SecurityGroups[0].IpPermissions')
+          old=$(jq -c '[.[] | select(.FromPort == 8080)]' <<< "$rules")
           if [ "$old" != "[]" ]; then
             aws ec2 revoke-security-group-ingress --group-id "$sg" --ip-permissions "$old" >/dev/null
             echo "Closed port 8080"
           fi
+          if [ "$(jq --argjson p "$ORIGIN_PORT" '[.[] | select(.FromPort == $p)] | length' <<< "$rules")" = 0 ]; then
+            prefix_list=$(aws ec2 describe-managed-prefix-lists \
+              --filters Name=prefix-list-name,Values=com.amazonaws.global.cloudfront.origin-facing \
+              --query 'PrefixLists[0].PrefixListId' --output text)
+            aws ec2 authorize-security-group-ingress --group-id "$sg" --ip-permissions \
+              "IpProtocol=tcp,FromPort=$ORIGIN_PORT,ToPort=$ORIGIN_PORT,PrefixListIds=[{PrefixListId=$prefix_list,Description=CloudFront origin-facing}]" \
+              >/dev/null
+            echo "Opened $ORIGIN_PORT to CloudFront"
+          fi
+
+      - name: Attach domain
+        if: env.ACTION == 'up' || (env.ACTION == 'redeploy' && steps.target.outputs.skip != 'true')
+        run: deploy/aws/domain.sh attach
 
       - name: Delete deployment
         if: env.ACTION == 'down'

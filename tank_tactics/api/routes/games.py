@@ -5,7 +5,7 @@ from typing import Any
 
 from fastapi import APIRouter, Request
 
-from ... import recurrence
+from ... import game, recurrence
 from ...config import GameConfig
 from ...service import ServiceError
 from ..deps import OptionalUserDep, PlayerDep, ServiceDep
@@ -18,7 +18,7 @@ router = APIRouter(prefix="/api", tags=["games"])
 def defaults(service: ServiceDep) -> dict[str, Any]:
     """The default game rules (what the create form starts from), and the time zones
     the AP schedule accepts."""
-    return {"config": GameConfig().model_dump(), "allow_debug": service.cfg.allow_debug,
+    return {"config": GameConfig().model_dump(), "allow_debug": service.cfg.allow_debug, "colors": game.PLAYER_COLORS,
             "timezones": recurrence.timezones()}
 
 

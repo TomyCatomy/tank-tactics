@@ -361,6 +361,18 @@ def reset_link_revokes_old_tokens(t: T):
 
 
 @scenario("lobby")
+def players_pick_their_colour(t: T):
+    h, b = t.lobby(2)
+    t.good(t.post(b, "color", {"color": "#00CED1"}), "pick a colour")
+    t.eq(t.tank(h, b)["color"], "#00ced1", "everyone sees the new colour, normalised")
+    t.err(t.post(h, "color", {"color": "#00cfd2"}), 400, "color_taken", "a colour too close to another player's")
+    t.err(t.post(h, "color", {"color": "#050505"}), 400, "invalid_color", "a colour too dark for the board")
+    for bad in ("red", "#abc", "#gggggg", "#00ced1; x"):
+        t.err(t.post(h, "color", {"color": bad}), 400, "invalid_color", f"malformed colour {bad!r}")
+    t.err(t.post(h, "color", {}), 400, "bad_request", "colour missing")
+
+
+@scenario("lobby")
 def closed_lobby_is_final(t: T):
     h, b = t.lobby(2)
     t.good(t.post(h, "close"), "close lobby")
@@ -380,6 +392,7 @@ def lobby_locked_after_start(t: T):
     t.err(t.post(h, "start"), 400, "not_lobby", "start twice")
     t.err(t.post(h, "config", {"config": {"fog_of_war": "alliance"}}), 400, "not_lobby", "config after start")
     t.err(t.post(b, "leave"), 400, "not_lobby", "leave after start")
+    t.err(t.post(b, "color", {"color": "#123456"}), 400, "not_lobby", "change colour after start")
     t.err(t.post(h, "close"), 400, "not_lobby", "close after start")
     pre = t.lobby(2, QUIET)
     t.err(t.act(pre[0], "upgrade"), 400, "not_active", "act before start")

@@ -281,6 +281,10 @@ class GameService:
         self._mutate(game_id, lambda s: game.leave_lobby(s, player_id, self.clock()))
         self._revoke_token(game_id, player_id)
 
+    def set_color(self, game_id: str, player_id: str, color: Any) -> None:
+        """Pick your tank's colour, in the lobby."""
+        self._mutate(game_id, lambda s: game.set_color(s, player_id, color, self.clock()))
+
     def close_game(self, game_id: str, player_id: str) -> None:
         """Host cancels the lobby. Tokens keep working so everyone can see it was closed."""
         self._mutate(game_id, lambda s: game.close_lobby(s, player_id, self.clock()))

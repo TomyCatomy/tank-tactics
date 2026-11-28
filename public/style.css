@@ -127,6 +127,12 @@ button.help-tip:hover .help-tip-icon, button.help-tip:focus-visible .help-tip-ic
 .badge.good { color: var(--accent); border-color: #3f5f12; }
 .badge.warn { color: var(--warn); border-color: #6b5313; }
 .badge.bad { color: var(--danger); border-color: #7f2d33; }
+/* Tank colour picker (lobby) */
+.swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--tap), 1fr)); gap: 8px; margin: 8px 0 12px; }
+.swatch { min-height: var(--tap); padding: 0; border-radius: 50%; aspect-ratio: 1; border: 2px solid rgba(0,0,0,.4); }
+.swatch.current { outline: 3px solid var(--text); outline-offset: 2px; }
+.swatch:disabled { opacity: .25; cursor: not-allowed; }
+.custom-color input[type=color] { width: 64px; min-height: var(--tap); padding: 2px; flex: 0 0 auto; }
 .dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; flex: 0 0 auto; border: 1px solid rgba(0,0,0,.4); }
 
 /* Home */

@@ -8,6 +8,7 @@ import { route } from '../router.js';
 import { saved } from '../storage.js';
 import { rejoinBlock } from './rejoin.js';
 import { chatPanel, renderChat, scrollChatToEnd, unreadTotal } from './chat.js';
+import { colorButton } from './colors.js';
 import { G, me, post, postAndRefresh, refresh } from './session.js';
 import { render, switchSeat } from './view.js';
 
@@ -80,6 +81,7 @@ function renderPlayers() {
     h('ul', { class: 'plist' }, st.players.map((p) => h('li', {},
       dot(p.color),
       h('span', { class: 'pname' }, nameEl(p.name), p.id === my?.id ? ' (you)' : '', p.is_host ? ' · host' : ''),
+      p.id === my?.id ? colorButton() : null,
       p.id !== my?.id && mySeats.has(p.id) ? h('button', { class: 'small', onclick: () => switchSeat(p.id) }, 'Play as') : null,
       isHost && !p.is_host ? h('button', { class: 'small danger', onclick: () => remove(p) }, 'Remove') : null))));
 }
