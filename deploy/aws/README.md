@@ -81,10 +81,13 @@ certificate against that name.
 - uvicorn serves HTTPS on 8443 (`SSL_CERTFILE` / `SSL_KEYFILE`, set by a systemd drop-in that
   `tls.sh` writes). The security group opens only 8443, and only to CloudFront's
   origin-facing prefix list.
-- A redeploy moves a server from before this change over: it opens 8443, points the origin
-  name at the Elastic IP, gets the certificate, restarts the app on HTTPS, switches the
-  distribution's origin to `https-only`, then closes 8080. The site is down for the few
-  minutes CloudFront takes to deploy the new origin.
+- A redeploy moves a server from before this change over: it points the origin name at the
+  Elastic IP, gets the certificate, restarts the app on HTTPS, swaps the security group's
+  8080 rule for 8443 (one prefix-list rule counts as about 55 of a group's 60 rules, so
+  both can't be open at once), then switches the distribution's origin to `https-only`.
+  The site is down from the restart until CloudFront has deployed the new origin, a few
+  minutes. If getting the certificate fails, nothing has changed and the old server keeps
+  running.
 
 **Before the first deploy with this change, update the foundation stack** so the instance role
 may write the challenge record and the deploy role may manage `origin.` and close 8080:
