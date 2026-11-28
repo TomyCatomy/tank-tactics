@@ -420,6 +420,34 @@ def test_upgrade_range_needs_ap_and_respects_cap():
     assert p(s, "a").action_range == 4 and p(s, "a").ap == 8
 
 
+
+def test_each_range_upgrade_costs_one_more_ap():
+    s = make_active({"a": (0, 0), "b": (9, 0)})
+    p(s, "a").ap = 12
+    spent = []
+    for _ in range(3):
+        before = p(s, "a").ap
+        assert game.range_upgrade_cost(s, p(s, "a")) == 3 + len(spent)
+        (entry,) = game.upgrade_range(s, "a", T0)
+        spent.append(before - p(s, "a").ap)
+        assert entry.details == {"cost": spent[-1]}
+    assert spent == [3, 4, 5] and p(s, "a").action_range == 6
+    with err("insufficient_ap"):  # the fourth costs 6, and 0 AP are left
+        game.upgrade_range(s, "a", T0)
+    assert game.view_for(s, "b")["players"][0]["upgrade_cost"] == 6  # public, like the range
+
+
+def test_range_upgrade_step_sets_the_increase():
+    s = make_active({"a": (0, 0), "b": (9, 0)}, actions={"range_upgrade_cost": 2, "range_upgrade_step": 0})
+    p(s, "a").ap = 4
+    game.upgrade_range(s, "a", T0)
+    game.upgrade_range(s, "a", T0)
+    assert p(s, "a").ap == 0
+    s = make_active({"a": (0, 0), "b": (9, 0)}, start={"action_range": 1}, actions={"range_upgrade_cost": 1, "range_upgrade_step": 5})
+    p(s, "a").ap = 7
+    game.upgrade_range(s, "a", T0)
+    assert game.range_upgrade_cost(s, p(s, "a")) == 6
+
 # 10. Fog of war --------------------------------------------------------------------
 
 def _fog_scenario(fog: str):

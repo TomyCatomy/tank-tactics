@@ -189,6 +189,12 @@ Where the spec left room for interpretation, this is what I chose and why.
     the distance to one decimal. With the longer reach of a disc this size, the defaults
     moved to range 3 and an auto board of at least 12×12.
 
+38. **Range upgrades get dearer.** The owner's call: each upgrade costs `range_upgrade_step`
+    (default 1) more AP than the one before, so 3, 4, 5... with the defaults. The count of
+    upgrades bought is `action_range - start.action_range` (nothing else changes range), so
+    no new state is stored. Players' views carry `upgrade_cost`, their next upgrade's price;
+    it is public, since it follows from the range, which is public.
+
 ## Tank colours
 
 39. **Players pick their tank's colour, in the lobby only**, so tanks don't change colour

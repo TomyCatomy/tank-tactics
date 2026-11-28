@@ -22,7 +22,7 @@ export function meTab() {
   if (!my) return h('p', {}, 'Spectating.');
   const targets = st.players.filter((p) => p.alive && p.id !== my.id && inRange(my, p, my.action_range)).length;
   const canMove = freeNeighbours(my, st.players, st.game.board_size, c).length > 0;
-  const upgradeCost = c.actions.range_upgrade_cost, maxRange = c.actions.max_range;
+  const upgradeCost = my.upgrade_cost, maxRange = c.actions.max_range;
   const capped = maxRange !== null && my.action_range >= maxRange;
   const item = (label, cost, why, btn = null) => h('li', {},
     h('div', {}, h('div', {}, label), h('div', { class: 'why' }, why || '')),

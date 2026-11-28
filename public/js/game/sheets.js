@@ -27,9 +27,9 @@ export function blockers({ cost = 0, target = null, needRange = false } = {}) {
 
 /** Why upgrading range is unavailable, or null. */
 function upgradeBlocker() {
-  const my = me(), { max_range: max, range_upgrade_cost: cost } = G.state.game.config.actions;
+  const my = me(), max = G.state.game.config.actions.max_range;
   if (max !== null && my.action_range >= max) return `Already at max range (${max})`;
-  return blockers({ cost });
+  return blockers({ cost: my.upgrade_cost });
 }
 
 /** Why giving HP to `target` is unavailable, or null. */
@@ -60,7 +60,7 @@ export function openMoveSheet(x, y) {
 
 export function openSelfSheet() {
   openSheet(() => {
-    const my = me(), cost = G.state.game.config.actions.range_upgrade_cost;
+    const my = me(), cost = my.upgrade_cost;
     return [h('h2', {}, dot(my.color), h('span', {}, nameEl(my.name), ' (you)')),
       h('p', { class: 'muted' }, `HP ${my.hp} · AP ${my.ap} · Range ${my.action_range}. Tap a highlighted tile next to you to move.`),
       actRow('Upgrade range', `${cost} AP → range ${my.action_range + 1}`, upgradeBlocker(), () => doAction({ type: 'upgrade' }))];
