@@ -6,17 +6,11 @@ from typing import Any
 
 from ..config import GameConfig
 from .board import distance, get_player
+from .colors import next_free_color
 from .events import log_event
 from .guards import require_active, require_host, require_lobby
 from .outcome import check_game_over, kill_tank, snapshot_ap
 from .state import EventType, GameError, GameState, LogEntry, Player
-
-PLAYER_COLORS = [
-    "#e6194b", "#3cb44b", "#ffe119", "#4363d8", "#f58231", "#911eb4", "#42d4f4", "#f032e6",
-    "#bfef45", "#fabed4", "#469990", "#dcbeff", "#9a6324", "#fffac8", "#800000", "#aaffc3",
-    "#808000", "#ffd8b1", "#5e60ce", "#a9a9a9", "#ff6f61", "#6b5b95", "#88b04b", "#f7cac9",
-]
-
 
 def _normalize_name(raw: Any) -> str:
     if not isinstance(raw, str):
@@ -40,10 +34,7 @@ def add_player(state: GameState, player_id: str, name: Any, now: float, is_host:
         raise GameError("lobby_full", "This game is full.")
     if any(p.name.lower() == name.lower() for p in state.players):
         raise GameError("invalid_name", "That name is already taken in this game.")
-    used = {p.color for p in state.players}
-    color = next((c for c in PLAYER_COLORS if c not in used), None)
-    if color is None:
-        color = f"hsl({(len(state.players) * 137.508) % 360:.0f} 70% 55%)"
+    color = next_free_color(state)
     c = state.config
     state.players.append(
         Player(

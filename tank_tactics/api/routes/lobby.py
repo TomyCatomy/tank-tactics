@@ -1,10 +1,10 @@
-"""Lobby management: settings, start, remove (host), leave (players), close (host)."""
+"""Lobby management: settings, start, remove (host), leave and tank colour (players), close (host)."""
 from __future__ import annotations
 
 from fastapi import APIRouter
 
 from ..deps import PlayerDep
-from ..schemas import ConfigUpdateRequest, Ok, RemovePlayerRequest
+from ..schemas import ColorRequest, ConfigUpdateRequest, Ok, RemovePlayerRequest
 
 router = APIRouter(prefix="/api/games/{game_id}", tags=["lobby"])
 
@@ -27,6 +27,14 @@ def start_game(player: PlayerDep) -> Ok:
 def leave(player: PlayerDep) -> Ok:
     """Leave the lobby (not the host, who closes it instead). Your token stops working."""
     player.service.leave_game(player.game_id, player.player_id)
+    return Ok()
+
+
+@router.post("/color")
+def set_color(body: ColorRequest, player: PlayerDep) -> Ok:
+    """Before the game starts: pick your tank's colour. It must be a hex colour that isn't too
+    dark or too close to another player's (``invalid_color`` / ``color_taken``)."""
+    player.service.set_color(player.game_id, player.player_id, body.color)
     return Ok()
 
 

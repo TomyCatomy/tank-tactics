@@ -57,6 +57,10 @@ class SchedulePreview(BaseModel):
     summary: str
 
 
+class ColorRequest(_Body):
+    color: str = Field(description="Hex colour, e.g. #3cb44b.", max_length=16)
+
+
 class RemovePlayerRequest(_Body):
     player_id: str
 

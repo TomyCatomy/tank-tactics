@@ -189,6 +189,17 @@ Where the spec left room for interpretation, this is what I chose and why.
     the distance to one decimal. With the longer reach of a disc this size, the defaults
     moved to range 3 and an auto board of at least 12×12.
 
+## Tank colours
+
+39. **Players pick their tank's colour, in the lobby only**, so tanks don't change colour
+    mid-game and confuse everyone. New players still get the next free palette colour; the
+    palette is in `GET /api/defaults` (`colors`) for the picker, but any `#rrggbb` is
+    accepted. A colour is refused if it is too dark for the board (relative luminance
+    under 0.04) or within a "redmean" distance of 60 of another player's, so nobody can
+    disguise themselves as someone else. The check only applies to the colour being
+    chosen: the palette itself has a few close pairs, which stay as they are. Changing
+    colour logs nothing.
+
 ## Movement
 
 37. **No diagonal moves**, the owner's call: a move goes to one of the 4 orthogonal

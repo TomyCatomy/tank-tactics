@@ -38,8 +38,8 @@ from .commands import (
 from .clock import advance_time, game_ends_at, next_ap_tick_at, next_due_at, next_jury_close_at
 from .jury import cast_jury_vote
 from .recurrence import next_occurrence_after, occurrences_between, schedule_of, schedule_view
+from .colors import PLAYER_COLORS, set_color
 from .lobby import (
-    PLAYER_COLORS,
     add_player,
     close_lobby,
     create_game,
@@ -60,7 +60,7 @@ __all__ = [
     "adjacent", "distance", "find_player", "get_player", "in_bounds", "in_range", "is_juror", "living_players", "occupant_at", "range_distance",
     # lobby
     "PLAYER_COLORS", "add_player", "close_lobby", "create_game", "leave_lobby", "place_tanks", "remove_player",
-    "start_game", "update_config",
+    "set_color", "start_game", "update_config",
     # actions
     "MOVE_COST", "SHOOT_COST", "give_ap", "give_hp", "move", "shoot", "upgrade_range",
     # commands
