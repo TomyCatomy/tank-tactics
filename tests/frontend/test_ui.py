@@ -551,6 +551,21 @@ def test_create_form_is_folded_until_opened(server, page):
     assert not page.get_by_role("button", name="Create game").is_visible()
 
 
+def test_your_games_card_folds_and_remembers_it(server, page):
+    host, _ = create_game(server)
+    open_as(page, server, host)  # saves the seat on this device
+    page.goto(server.url)
+    game_row = page.locator(".home-games li", has_text=host["game_id"])
+    game_row.wait_for()  # open by default
+    page.locator(".games-fold > summary").click()
+    assert not game_row.is_visible()
+    page.reload()
+    page.wait_for_selector(".games-fold")
+    assert not game_row.is_visible()  # still folded after a reload
+    page.locator(".games-fold > summary").click()
+    game_row.wait_for()
+
+
 def test_debug_options_hidden_when_not_allowed(server_without_debug, page):
     server = server_without_debug
     page.goto(server.url)

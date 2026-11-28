@@ -81,3 +81,9 @@ export const account = {
   clear: () => write('tt.session', undefined),
   token() { return this.get()?.token || null; },
 };
+
+/** Small per-device UI preferences, such as which home cards are folded. */
+export const prefs = {
+  get: (key) => read('tt.prefs', {})[key],
+  set: (key, value) => write('tt.prefs', { ...read('tt.prefs', {}), [key]: value }),
+};

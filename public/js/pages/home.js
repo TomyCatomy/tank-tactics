@@ -4,7 +4,7 @@ import { claimSeat, linkSavedSeats, mountGoogleButton, signOut } from '../auth.j
 import { configForm } from '../config-form.js';
 import { $, h, nameEl } from '../dom.js';
 import { toast } from '../notify.js';
-import { account, saved } from '../storage.js';
+import { account, prefs, saved } from '../storage.js';
 import { friendlyWarning, nameInput, spinner } from './shared.js';
 
 export async function renderHome() {
@@ -70,12 +70,17 @@ function myGamesCard(remote, user) {
     }
     location.hash = `#/g/${g.gid}`;
   };
-  return h('div', { class: 'card home-games' }, h('h2', {}, user ? 'Your games' : 'Your games on this device'),
+  // Open by default; folding it is remembered on this device.
+  const fold = h('details', { class: 'fold games-fold', open: !prefs.get('gamesFolded') },
+    h('summary', {}, h('h2', {}, user ? 'Your games' : 'Your games on this device'),
+      h('span', { class: 'muted small' }, `(${games.length})`)),
     h('ul', { class: 'plist' }, games.map((g) => h('li', { class: 'clickable', onclick: () => open(g) },
       h('span', { class: 'pname' }, g.gid,
         g.name ? h('span', { class: 'muted' }, ' · ', nameEl(g.name)) : null,
         g.status ? h('span', { class: 'muted small' }, ` · ${g.status}`) : null),
       h('span', { class: 'pstats' }, 'Open ›')))));
+  fold.addEventListener('toggle', () => prefs.set('gamesFolded', !fold.open));
+  return h('div', { class: 'card home-games' }, fold);
 }
 
 function joinCard() {
@@ -107,7 +112,7 @@ function createCard(defaults, allowDebug, user) {
   };
   return h('form', { class: 'card home-create', onsubmit },
     // Folded by default: most visitors come to join or reopen a game, and the form is long.
-    h('details', { class: 'stack create-fold' },
+    h('details', { class: 'stack fold create-fold' },
       h('summary', {}, h('h2', {}, 'Create a game')),
       friendlyWarning(),
       h('label', {}, h('span', { class: 'muted small' }, 'Your name'), nameIn),
