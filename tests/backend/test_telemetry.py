@@ -103,6 +103,23 @@ def test_host_load_metrics(instrumented):
     assert "system.network.connections" not in points  # left out: slow, and many series
 
 
+def test_database_queries_are_traced_without_values(instrumented):
+    client, _, spans, reader, _ = instrumented
+    host = client.post("/api/games", json={"name": "Secret Name"}).json()
+    client.post(f"/api/games/{host['game_id']}/chat", json={"text": "hidden words"},
+                headers={"Authorization": f"Bearer {host['token']}"})
+
+    finished = spans.get_finished_spans()
+    request = next(s for s in finished if s.name == "POST /api/games")
+    queries = [s for s in finished if s.attributes and s.attributes.get("db.system") == "sqlite"]
+    assert any(s.parent and s.context.trace_id == request.context.trace_id for s in queries)
+    statements = " ".join(str(s.attributes.get("db.statement", "")) for s in queries)
+    assert "INSERT INTO" in statements
+    for value in (host["token"], "Secret Name", "hidden words"):
+        assert value not in statements
+    assert "db.client.connections.usage" in _metrics(reader)
+
+
 def test_log_records_are_exported(instrumented):
     *_, logs = instrumented
     logging.getLogger("tank_tactics").warning("scheduler tick failed")

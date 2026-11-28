@@ -197,6 +197,10 @@ class Store:
         # and keeps writes to a game in commit order on Postgres too.
         self._lock = threading.Lock()
 
+    @property
+    def engine(self) -> Engine:
+        return self._engine
+
     def close(self) -> None:
         self._engine.dispose()
 

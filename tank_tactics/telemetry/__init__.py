@@ -7,7 +7,8 @@ the auth header, ``OTEL_SERVICE_NAME`` (default ``tank-tactics``), ``OTEL_RESOUR
 
 Sent: a span per HTTP request and WebSocket connection (none for static files or WebSocket
 messages), request metrics by route, the game's ``tank_tactics.*`` metrics (``game_metrics.py``),
-the host's CPU, memory, disk and network load (``system_metrics.py``) and INFO+ log records.
+the host's CPU, memory, disk and network load (``system_metrics.py``), a span per database
+query with connection pool metrics (``db.py``) and INFO+ log records.
 Headers and bodies (tokens, chat text, names) are never recorded, and ``redaction.py`` masks
 secrets in what is (URL query strings, exception messages and tracebacks, log messages).
 """
@@ -33,6 +34,7 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor, SimpleSpanProcess
 
 from .. import redaction
 from . import game_metrics
+from .db import DatabaseTelemetry
 from .system_metrics import SystemMetrics
 
 ENDPOINT_VAR = "OTEL_EXPORTER_OTLP_ENDPOINT"
@@ -50,12 +52,13 @@ class Telemetry:
     meter_provider: MeterProvider
     logger_provider: LoggerProvider
     log_handler: LoggingHandler
-    system_metrics: SystemMetrics
+    instrumentors: list[SystemMetrics | DatabaseTelemetry]
 
     def shutdown(self) -> None:
         """Flush whatever is still buffered and stop exporting."""
         logging.getLogger().removeHandler(self.log_handler)
-        self.system_metrics.stop()
+        for instrumentor in self.instrumentors:
+            instrumentor.stop()
         for provider in (self.tracer_provider, self.meter_provider, self.logger_provider):
             provider.shutdown()
 
@@ -114,8 +117,11 @@ def setup(
         exclude_spans=["receive", "send"],  # otherwise every WebSocket push is a span
     )
     game_metrics.instrument(app, meter_provider)
-    system_metrics = SystemMetrics(meter_provider)
-    return Telemetry(tracer_provider, meter_provider, logger_provider, log_handler, system_metrics)
+    instrumentors = [
+        SystemMetrics(meter_provider),
+        DatabaseTelemetry(app.state.service.store.engine, tracer_provider, meter_provider),
+    ]
+    return Telemetry(tracer_provider, meter_provider, logger_provider, log_handler, instrumentors)
 
 
 def _resource() -> Resource:
