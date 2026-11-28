@@ -938,3 +938,18 @@ def test_player_picks_tank_color_in_lobby(server, page):
                            " === 'rgb(67, 99, 216)'")
     # Only your own row has the button.
     assert page.get_by_role("button", name="Change your tank’s colour").count() == 1
+
+
+def test_upgrade_price_rises_after_each_upgrade(server, page):
+    host, _ = create_game(server, config={"start": {"ap": 7}})
+    with httpx.Client(base_url=server.url) as c:
+        r = c.post(f"/api/games/{host['game_id']}/start", headers={"Authorization": f"Bearer {host['token']}"})
+        assert r.status_code == 200, r.text
+    open_as(page, server, host)
+    row = page.locator(".actions-list li", has_text="Upgrade range")
+    assert "3 AP" in row.inner_text()
+    row.get_by_role("button", name="Upgrade").click()
+    page.wait_for_function("() => document.querySelector('.stats').innerText.includes('4')")
+    page.locator(".actions-list li", has_text="4 AP").wait_for()
+    page.locator(".actions-list li", has_text="Upgrade range").get_by_role("button", name="Upgrade").click()
+    page.locator(".actions-list li", has_text="Upgrade range").locator("text=Needs 5 AP (you have 0)").wait_for()

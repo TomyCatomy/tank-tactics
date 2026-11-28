@@ -66,7 +66,7 @@ class Bot:
             if killable:
                 return shoot(min(killable, key=lambda p: p.hp))
             cap = s.config.actions.max_range
-            if me.ap >= s.config.actions.range_upgrade_cost + 2 and (cap is None or me.action_range < cap):
+            if me.ap >= game.range_upgrade_cost(s, me) + 2 and (cap is None or me.action_range < cap):
                 game.upgrade_range(s, me.id, now)
                 return True
             if in_range and me.ap >= 6:

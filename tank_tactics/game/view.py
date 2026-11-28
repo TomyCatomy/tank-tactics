@@ -7,6 +7,7 @@ from __future__ import annotations
 import copy
 from typing import Any
 
+from .actions import range_upgrade_cost
 from .board import find_player, is_juror
 from .clock import game_ends_at, next_ap_tick_at, next_jury_close_at
 from .recurrence import schedule_view
@@ -32,6 +33,7 @@ def view_for(state: GameState, viewer_id: str | None) -> dict[str, Any]:
             "id": p.id, "name": p.name, "color": p.color, "x": p.x, "y": p.y, "hp": p.hp,
             "action_range": p.action_range, "alive": p.alive, "is_host": p.is_host,
             "is_juror": is_juror(state, p), "died_at": p.died_at,
+            "upgrade_cost": range_upgrade_cost(state, p),  # public: it follows from the range
         }
         if fog_off or (viewer is not None and p.id == viewer.id):
             pv["ap"] = p.ap

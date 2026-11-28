@@ -45,7 +45,7 @@ player's, is refused.
 | **Shoot** | 1 AP | Deal 1 damage to any tank within your range. Allies too. |
 | **Give AP** | the AP you give | Hand any amount of your AP to a tank within your range. |
 | **Give HP** | the HP you give | Hand some of your HP to a tank within your range. You must keep at least 1. |
-| **Upgrade range** | 3 AP | Your range goes up by 1, permanently. |
+| **Upgrade range** | 3 AP, then 1 more each time | Your range goes up by 1, permanently. The first upgrade costs 3 AP, the next 4, then 5, and so on. |
 
 "Within range" means within **your** range.
 
@@ -90,7 +90,7 @@ Positions, HP, range, shots, moves, kills, range upgrades and the winner are alw
 ### Other host settings
 
 The host can also change the board size, starting stats, the AP schedule, the
-upgrade cost, an AP cap or a maximum range, and whether destroyed tanks leave wrecks that
+upgrade costs, an AP cap or a maximum range, and whether destroyed tanks leave wrecks that
 block their tile. The host can also turn off giving HP or the jury, turn on looting, and set a time limit
 in days.
 The time limit ends the game on the next whole minute after it runs out, and no
