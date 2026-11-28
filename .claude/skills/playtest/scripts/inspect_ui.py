@@ -331,6 +331,19 @@ def g_home(pg, url, fx, api):
         yield "home-advanced-open"
 
 
+def g_home_games(pg, url, fx, api):
+    open_seat(pg, url, fx["lobby"][0])  # saves the seat, so the home page lists it under "Your games"
+    pg.goto(url)
+    pg.wait_for_selector(".home-games li")
+    settle(pg)
+    yield "home-saved-games"
+    fold = pg.locator(".games-fold > summary")
+    if fold.count():  # the list can be folded away (versions without the fold capture the same screen again)
+        fold.first.click(force=True)
+        settle(pg)
+    yield "home-saved-games-folded"
+
+
 def g_join(pg, url, fx, api):
     pg.goto(f"{url}/#/join/{fx['lobby'][0]['game_id']}")
     pg.wait_for_selector("input")
@@ -408,7 +421,7 @@ def g_closed(pg, url, fx, api):
 
 
 GROUPS: dict[str, Callable] = {
-    "home": g_home, "join": g_join, "lobby": g_lobby, "lobby-guest": g_lobby_guest, "rules": g_rules,
+    "home": g_home, "home-games": g_home_games, "join": g_join, "lobby": g_lobby, "lobby-guest": g_lobby_guest, "rules": g_rules,
     "game": g_game, "dead": g_dead, "fog": g_fog, "finished": g_finished, "closed": g_closed,
 }
 
