@@ -87,6 +87,22 @@ def test_game_metrics(instrumented):
     assert any(name.startswith("http.server") for name in points)
 
 
+def test_host_load_metrics(instrumented):
+    """CPU, memory, disk and network load are reported, every time telemetry is set up
+    (the system metrics instrumentor is a process-wide singleton)."""
+    *_, reader, _ = instrumented
+    points = _metrics(reader)
+    for name in ("system.cpu.utilization", "system.cpu.load_average.1m", "system.memory.usage",
+                 "system.memory.utilization", "system.filesystem.usage", "system.filesystem.utilization",
+                 "system.disk.io", "system.network.io", "process.cpu.utilization", "process.memory.usage"):
+        assert points.get(name), f"{name} was not reported"
+    assert 0 < points["system.filesystem.utilization"][0].value < 1
+    assert {p.attributes["state"] for p in points["system.memory.usage"]} >= {"used", "free"}
+    assert {p.attributes["direction"] for p in points["system.network.io"]} == {"transmit", "receive"}
+    assert points["process.memory.usage"][0].value > 0
+    assert "system.network.connections" not in points  # left out: slow, and many series
+
+
 def test_log_records_are_exported(instrumented):
     *_, logs = instrumented
     logging.getLogger("tank_tactics").warning("scheduler tick failed")
