@@ -172,7 +172,11 @@ instance's load: `system_cpu_utilization_ratio`, `system_cpu_load_average_1m` (a
 `system_memory_usage_bytes` / `system_memory_utilization_ratio` (RAM),
 `system_filesystem_utilization_ratio` and `system_disk_io_bytes_total` (disk),
 `system_network_io_bytes_total` (network), and the server process's own
-`process_cpu_utilization_ratio` and `process_memory_usage_bytes`. At this game's
+`process_cpu_utilization_ratio` and `process_memory_usage_bytes`.
+Each database query is a client span under the request that made it (`db.system` is
+`postgresql`, with Neon's host as `net.peer.name`, so Tempo's service graph shows Neon
+as a dependency), and `db_client_connections_usage` shows the pool's idle and used
+connections. At this game's
 traffic (about 1,000 players) it uses a small part of the free tier, and egress to
 Grafana stays within AWS's free 100 GB a month.
 

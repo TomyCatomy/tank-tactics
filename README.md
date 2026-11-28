@@ -43,7 +43,8 @@ tank_tactics/
     discord_oauth.py  "Connect to Discord": the OAuth flow that creates the webhook
   server.py    entry point: runs the app with uvicorn
   telemetry/   OpenTelemetry export (off unless OTEL_EXPORTER_OTLP_ENDPOINT is set):
-               setup, game metrics, host CPU / memory / disk / network metrics
+               setup, game metrics, host CPU / memory / disk / network metrics,
+               database query spans and pool metrics
   redaction.py masks secrets in exported spans and logs
 public/        the web client (index.html, style.css, plain ES modules in js/)
   js/main.js   entry point: rules modal, global listeners, starts the router
