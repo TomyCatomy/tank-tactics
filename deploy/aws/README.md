@@ -139,7 +139,7 @@ The deployment fails if sign-in can't be turned on:
 ## Telemetry: Grafana Cloud (optional)
 
 The server can export traces, metrics and logs over OTLP to Grafana Cloud's free tier
-(see [`tank_tactics/telemetry.py`](../../tank_tactics/telemetry.py) for what is sent; no
+(see [`tank_tactics/telemetry/`](../../tank_tactics/telemetry/__init__.py) for what is sent; no
 tokens, names or chat text). It is off unless both parameters below exist.
 
 1. In Grafana Cloud, open your stack, then **Connections > Add new connection >
@@ -167,7 +167,12 @@ both parameters and `redeploy`.
 
 In Grafana, the service is `tank-tactics` (environment `production`): traces in Tempo,
 logs in Loki, and metrics in Prometheus as `tank_tactics_games`, `tank_tactics_websockets`,
-`tank_tactics_game_events_total` and the `http_server_*` request metrics. At this game's
+`tank_tactics_game_events_total`, the `http_server_*` request metrics, and the
+instance's load: `system_cpu_utilization_ratio`, `system_cpu_load_average_1m` (and `_5m`, `_15m`) (CPU),
+`system_memory_usage_bytes` / `system_memory_utilization_ratio` (RAM),
+`system_filesystem_utilization_ratio` and `system_disk_io_bytes_total` (disk),
+`system_network_io_bytes_total` (network), and the server process's own
+`process_cpu_utilization_ratio` and `process_memory_usage_bytes`. At this game's
 traffic (about 1,000 players) it uses a small part of the free tier, and egress to
 Grafana stays within AWS's free 100 GB a month.
 

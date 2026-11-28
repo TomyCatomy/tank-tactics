@@ -1,4 +1,4 @@
-"""Masks secrets in telemetry before it leaves the process (see ``telemetry.py``).
+"""Masks secrets in telemetry before it leaves the process (see ``telemetry``).
 
 The first line of defence is not recording sensitive data at all: no request or response
 bodies or headers. This is the second, for what still slips into text: query strings
