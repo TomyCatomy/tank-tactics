@@ -1481,7 +1481,9 @@ def create_join_and_start_through_the_ui(t: T):
 
 @scenario("browser", "browser")
 def play_a_whole_game_in_the_ui(t: T):
-    a, b, c = t.game(3, {"board": {"size": 6, "wreckage_blocks_tile": True}, "start": {"hp": 2, "ap": 12, "action_range": 6},
+    # Range 8 reaches across the whole 6x6 board (corner to corner is 7.07), so the shots below
+    # never depend on where the tanks happen to start.
+    a, b, c = t.game(3, {"board": {"size": 6, "wreckage_blocks_tile": True}, "start": {"hp": 2, "ap": 12, "action_range": 8},
                          "jury": {"enabled": True}})
     pa, pb = t.h.browser.page(t), t.h.browser.page(t)
     try:
@@ -1506,7 +1508,7 @@ def play_a_whole_game_in_the_ui(t: T):
         # upgrade
         tap_tile(pa, *tile)
         press(pa, "Upgrade range")
-        t.wait(lambda: t.tank(a)["action_range"] == 7, 5, "upgrade from the UI")
+        t.wait(lambda: t.tank(a)["action_range"] == 9, 5, "upgrade from the UI")
 
         # give AP and HP
         pa.wait_for_timeout(150)
